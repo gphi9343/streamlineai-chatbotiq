@@ -1,0 +1,18 @@
+{
+  "name": "streamlineai-chatbotiq-backend",
+  "version": "1.0.0",
+  "description": "ChatbotIQ engine backend — Anthropic API proxy with structured error handling, prompt caching, streaming, and stop_reason routing",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.30.0",
+    "cors": "^2.8.5",
+    "express": "^4.21.0"
+  }
+}

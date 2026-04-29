@@ -4,7 +4,7 @@
 
 // BACKEND_URL is injected at build time by Netlify env var, or hard-coded here for local testing.
 // Set this to your Railway backend URL after deployment.
-const BACKEND_URL = window.BACKEND_URL || 'https://YOUR_RAILWAY_BACKEND_URL_HERE';
+const BACKEND_URL = window.BACKEND_URL || 'https://streamlineai-chatbotiq-production.up.railway.app';
 
 const messagesEl = document.getElementById('messages');
 const formEl = document.getElementById('chat-form');

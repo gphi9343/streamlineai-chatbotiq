@@ -18,9 +18,9 @@ import express from 'express';
 import cors from 'cors';
 
 import { streamChat } from './lib/anthropic.js';
-import { makeError } from './lib/errors.js';
-import { routeStopReason } from './lib/stop-reason.js';
-import { validateAssistantText } from './lib/validate.js';
+import { makeError, serialiseError, sendError } from './lib/errors.js';
+import { handleStopReason } from './lib/stop-reason.js';
+import { validateStreamedResponse } from './lib/validate.js';
 import { isValidSessionId } from './lib/sessions.js';
 import {
   ensureSession,
@@ -67,7 +67,9 @@ app.post('/chat', async (req, res) => {
 
   // --- Input validation
   if (!isValidSessionId(session_id)) {
-    return res.status(400).json(
+    return sendError(
+      res,
+      400,
       makeError({
         type: 'validation_error',
         message: 'Invalid or missing session_id',
@@ -77,7 +79,9 @@ app.post('/chat', async (req, res) => {
     );
   }
   if (typeof message !== 'string' || !message.trim() || message.length > 4000) {
-    return res.status(400).json(
+    return sendError(
+      res,
+      400,
       makeError({
         type: 'validation_error',
         message: 'Invalid message',
@@ -101,27 +105,28 @@ app.post('/chat', async (req, res) => {
   // --- Ensure session row exists
   const sessionResult = await ensureSession(session_id, CONFIG.deployment_name);
   if (!sessionResult.ok) {
-    send('error', sessionResult.error);
+    send('error', serialiseError(sessionResult.error));
     return res.end();
   }
 
   // --- Persist user message
   const userSave = await saveUserMessage(session_id, message);
   if (!userSave.ok) {
-    send('error', userSave.error);
+    send('error', serialiseError(userSave.error));
     return res.end();
   }
 
-  // --- Fetch history (excludes the message we just saved? no — it's there now)
-  // We saved first so a crash mid-stream still preserves the user input.
-  // The history fetch will include the just-saved user message as the
-  // last entry; we drop it to avoid duplicating it via `userMessage`.
+  // --- Fetch history
+  // We saved the user message first so a crash mid-stream still preserves
+  // the user input. The history fetch will include the just-saved user
+  // message as the last entry; we drop it to avoid duplicating it via
+  // the `userMessage` argument to streamChat.
   const historyResult = await getRecentMessages(session_id);
   if (!historyResult.ok) {
-    send('error', historyResult.error);
+    send('error', serialiseError(historyResult.error));
     return res.end();
   }
-  const history = historyResult.messages.slice(0, -1); // drop the just-saved user msg
+  const history = historyResult.messages.slice(0, -1);
 
   // --- Stream Claude
   const result = await streamChat({
@@ -132,17 +137,16 @@ app.post('/chat', async (req, res) => {
   });
 
   if (!result.ok) {
-    send('error', result.error);
+    send('error', serialiseError(result.error));
     return res.end();
   }
 
   // --- Validate accumulated response (Build Standard #3)
-  const validation = validateAssistantText(result.text);
+  const validation = validateStreamedResponse(result.text, result.stop_reason);
   if (!validation.ok) {
     // Validation failure post-stream — log, but the user has already seen
-    // the output. Still persist what we got, marked with the validation
-    // issue in stop_reason for diagnostics.
-    console.warn('[validate] post-stream validation failed:', validation.error);
+    // the output. Still persist what we got for diagnostics.
+    console.warn('[validate] post-stream validation failed:', validation.message);
   }
 
   // --- Persist assistant message + diagnostics
@@ -157,13 +161,19 @@ app.post('/chat', async (req, res) => {
   if (!assistantSave.ok) {
     // We already streamed the response; failing to persist is logged
     // but not surfaced to the user.
-    console.error('[persist] saveAssistantMessage failed:', assistantSave.error);
+    console.error(
+      '[persist] saveAssistantMessage failed:',
+      serialiseError(assistantSave.error)
+    );
   }
 
   // --- Route on stop_reason (Build Standard #5)
-  const routerAction = routeStopReason(result.stop_reason);
+  const routerAction = handleStopReason(result.stop_reason, result.text);
   if (routerAction.action !== 'complete') {
-    send('stop_reason', { reason: result.stop_reason, action: routerAction.action });
+    send('stop_reason', {
+      reason: routerAction.reason,
+      action: routerAction.action,
+    });
   }
 
   send('done', {

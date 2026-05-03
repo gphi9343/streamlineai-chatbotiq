@@ -1,16 +1,19 @@
 // frontend/chat.js
-// V1.1 — adds session ID, parses V1.0-format SSE events.
 //
-// Session ID: UUID generated client-side, persisted in localStorage.
-// Survives page reloads. Cleared via the "New conversation" button.
+// V1.2 — KB ingestion and retrieval.
 //
-// SSE event format (matches V1.0 backend):
-//   Each event is `data: {json}\n\n`. JSON has a `type` field:
-//     - { type: "token", text: "..." }       — append to assistant message
-//     - { type: "done", stop_reason, usage } — stream complete
-//     - { type: "error", error: {...} }      — structured error
+// Changes from V1.1:
+// - Version label bumped to V1.2
+// - Defensive SSE parser: every event logged to console with name + data
+// - Every error path surfaces visibly in chat (no more silent empty bubbles)
+// - Pre-stream sanity check: if no token events arrive, surfaces a diagnostic
+//   message rather than leaving an empty assistant bubble
+// - Handles the V1.2 done event including the new kb_hits field
+//
+// Backend contract preserved — same SSE event shape from server.js.
 
 (() => {
+  const VERSION = 'V1.2';
   const BACKEND_URL = window.BACKEND_URL || 'https://streamlineai-chatbotiq-production.up.railway.app';
   const SESSION_KEY = 'chatbotiq_session_id';
 
@@ -61,9 +64,13 @@
     els.input.disabled = busy;
   }
 
-  // --- SSE handler — fetch + ReadableStream (works with POST, unlike EventSource)
+  // --- SSE handler
   async function streamChat(message, assistantDiv) {
     const sessionId = getSessionId();
+    let tokenCount = 0;
+    let doneReceived = false;
+
+    console.log(`[chatbotiq] ${VERSION} sending message`, { sessionId, length: message.length });
 
     let response;
     try {
@@ -73,19 +80,19 @@
         body: JSON.stringify({ session_id: sessionId, message }),
       });
     } catch (err) {
-      appendStatus(`Network error: ${err.message}`);
+      console.error('[chatbotiq] fetch failed', err);
+      assistantDiv.textContent = `[Network error: ${err.message}]`;
+      assistantDiv.classList.add('msg-error');
       return;
     }
 
+    console.log('[chatbotiq] response status', response.status, response.headers.get('content-type'));
+
     if (!response.ok) {
-      // Non-streaming error response (validation failures before stream starts)
-      let errBody;
-      try {
-        errBody = await response.json();
-      } catch {
-        errBody = { message: await response.text() };
-      }
-      appendStatus(`Error ${response.status}: ${errBody.message || 'unknown'}`);
+      const errText = await response.text();
+      console.error('[chatbotiq] non-OK response', response.status, errText);
+      assistantDiv.textContent = `[Error ${response.status}: ${errText}]`;
+      assistantDiv.classList.add('msg-error');
       return;
     }
 
@@ -93,49 +100,78 @@
     const decoder = new TextDecoder();
     let buffer = '';
 
-    while (true) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
+    try {
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
 
-      // Parse SSE events: blocks separated by blank line
-      const blocks = buffer.split('\n\n');
-      buffer = blocks.pop(); // last incomplete block goes back to buffer
+        // SSE blocks separated by blank line
+        const blocks = buffer.split('\n\n');
+        buffer = blocks.pop(); // last incomplete block goes back to buffer
 
-      for (const block of blocks) {
-        if (!block.trim()) continue;
-        const data = parseSSEBlock(block);
-        if (!data) continue;
+        for (const block of blocks) {
+          if (!block.trim()) continue;
+          const event = parseSSEBlock(block);
+          if (!event) {
+            console.warn('[chatbotiq] could not parse SSE block', block);
+            continue;
+          }
 
-        if (data.type === 'token') {
-          assistantDiv.textContent += data.text;
-          els.messages.scrollTop = els.messages.scrollHeight;
-        } else if (data.type === 'error') {
-          const err = data.error || {};
-          appendStatus(
-            `Error: ${err.message || 'unknown'}${
-              err.suggestion ? ` — ${err.suggestion}` : ''
-            }`
-          );
-        } else if (data.type === 'done') {
-          // Optional: surface token usage in dev console
-          console.log('[chatbotiq] done:', data);
+          console.log('[chatbotiq] event', event.event, event.data);
+
+          if (event.event === 'token') {
+            tokenCount += 1;
+            assistantDiv.textContent += event.data.text;
+            els.messages.scrollTop = els.messages.scrollHeight;
+          } else if (event.event === 'error') {
+            const msg = event.data.message || 'unknown error';
+            const sug = event.data.suggestion ? ` — ${event.data.suggestion}` : '';
+            assistantDiv.textContent = `[Error: ${msg}${sug}]`;
+            assistantDiv.classList.add('msg-error');
+          } else if (event.event === 'stop_reason') {
+            console.warn('[chatbotiq] stop_reason', event.data);
+          } else if (event.event === 'done') {
+            doneReceived = true;
+            console.log('[chatbotiq] done', event.data);
+          } else {
+            console.warn('[chatbotiq] unknown event', event.event, event.data);
+          }
         }
       }
+    } catch (err) {
+      console.error('[chatbotiq] stream read failed', err);
+      if (!assistantDiv.textContent) {
+        assistantDiv.textContent = `[Stream error: ${err.message}]`;
+        assistantDiv.classList.add('msg-error');
+      }
+      return;
+    }
+
+    // Defensive: if the stream ended with no tokens and no error event,
+    // surface a diagnostic so the user sees something rather than an empty bubble.
+    if (tokenCount === 0 && !assistantDiv.textContent) {
+      console.error('[chatbotiq] stream ended with no tokens', { doneReceived });
+      assistantDiv.textContent = doneReceived
+        ? '[Empty response from server. Check Railway logs.]'
+        : '[Stream ended unexpectedly. Check Network tab for SSE events.]';
+      assistantDiv.classList.add('msg-error');
     }
   }
 
-  // V1.0 backend uses untyped SSE — only `data:` lines, JSON contains `type`
   function parseSSEBlock(block) {
     const lines = block.split('\n');
+    let eventName = 'message';
     const dataLines = [];
     for (const line of lines) {
-      if (line.startsWith('data:')) dataLines.push(line.slice(5).trim());
+      if (line.startsWith('event:')) eventName = line.slice(6).trim();
+      else if (line.startsWith('data:')) dataLines.push(line.slice(5).trim());
     }
     if (!dataLines.length) return null;
     try {
-      return JSON.parse(dataLines.join('\n'));
-    } catch {
+      return { event: eventName, data: JSON.parse(dataLines.join('\n')) };
+    } catch (err) {
+      console.warn('[chatbotiq] JSON.parse failed on data', dataLines, err);
       return null;
     }
   }
@@ -166,5 +202,5 @@
 
   // --- Boot
   els.input.focus();
-  console.log('[chatbotiq] V1.1 client ready. Session:', getSessionId());
+  console.log(`[chatbotiq] ${VERSION} client ready. Session:`, getSessionId());
 })();

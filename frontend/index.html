@@ -8,27 +8,24 @@
 </head>
 <body>
   <header>
-    <h1>ChatbotIQ <span class="version">V1.1</span></h1>
+    <h1>ChatbotIQ <span class="version">V1.2</span></h1>
     <button id="new-conversation" class="btn-secondary" type="button">
       New conversation
     </button>
   </header>
-
   <main>
     <div id="messages" aria-live="polite"></div>
-
     <form id="chat-form" autocomplete="off">
       <input
         id="input"
         type="text"
-        placeholder="Ask something…"
+        placeholder="Ask something..."
         maxlength="4000"
         required
       />
       <button id="send" type="submit">Send</button>
     </form>
   </main>
-
   <script src="chat.js"></script>
 </body>
 </html>

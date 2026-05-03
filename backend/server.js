@@ -65,7 +65,7 @@ const SYSTEM_PROMPT = buildSystemPrompt(CONFIG);
 app.get('/health', (_req, res) => {
   res.json({
     status: 'ok',
-    version: '1.2',
+    version: '1.4',
     deployment: CONFIG.deployment_name,
     system_prompt_chars: SYSTEM_PROMPT.length,
     timestamp: new Date().toISOString(),
@@ -214,7 +214,7 @@ app.post('/chat', async (req, res) => {
 // Boot
 // ----------------------------------------------------------------
 app.listen(PORT, () => {
-  console.log(`[chatbotiq] V1.2 listening on :${PORT}`);
+  console.log(`[chatbotiq] V1.4 listening on :${PORT}`);
   console.log(`[chatbotiq] deployment: ${CONFIG.deployment_name}`);
   console.log(`[chatbotiq] system prompt: ${SYSTEM_PROMPT.length} chars`);
   console.log(`[chatbotiq] CORS origin: ${ALLOWED_ORIGIN}`);

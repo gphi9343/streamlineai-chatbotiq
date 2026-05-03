@@ -66,3 +66,95 @@ Code organisation: backend has `server.js`, `lib/anthropic.js`, `lib/errors.js`,
 - Whether to add `chatbotiq-prod` API key now or defer until V1.4 per master file plan
 
 ---
+
+### Session 2 — 03 May 2026 — V1.1
+
+**Built:** Conversation memory in Supabase. Each chat session gets a stable client-generated UUID stored in browser `localStorage`; user and assistant messages persist in a `messages` table referencing a `sessions` table. On each `/chat` request: validate session, upsert session row, save user message, fetch last 20 turns, prepend history to the messages array sent to Claude, stream response, persist assistant message with `stop_reason` and full token usage.
+
+Code organisation: backend gains `lib/supabase.js` (client + CRUD for sessions/messages, classifies Supabase errors to structured shape), `lib/sessions.js` (UUID validation), `db/schema.sql` (one-shot DDL with RLS explicitly disabled and rationale comment). `lib/anthropic.js` extends V1.0's `callAnthropic` with an optional `history` parameter — name and signature otherwise unchanged. `server.js` adds the persistence pipeline; SSE event format identical to V1.0 (untyped, `type` inside JSON). Frontend `chat.js` adds session generation/persistence and a "New conversation" reset button; SSE parser updated to match V1.0's untyped format.
+
+Repo at `github.com/gphi9343/streamlineai-chatbotiq`, public, tagged `v1.1` at commit `9273874`.
+
+**Decided:**
+- Session ID generated client-side (UUID v4 from `crypto.randomUUID()`) and stored in `localStorage`. No server-side session creation endpoint — adds complexity without benefit when the browser already has a UUID generator. Backend validates shape only.
+- History fetched fresh per turn from Supabase rather than carried in client memory. Single source of truth, survives page reloads, supports server-side analytics later.
+- 20-turn history window. ~10 user/assistant pairs. Token-budget management deferred to V1.2 when KB content arrives and total prompt size matters more.
+- User message persisted BEFORE the API call so a crash mid-stream still preserves the user's input. History fetch returns the just-saved message as the last entry; server drops it before sending to API to avoid duplication via the explicit `userMessage` argument.
+- Backend uses Supabase secret key (formerly service_role), bypasses RLS. RLS explicitly disabled on both tables — rationale documented in `schema.sql` header. Frontend never talks to Supabase directly.
+- Token usage columns (`input_tokens`, `output_tokens`, `cache_read_tokens`, `cache_write_tokens`) included on `messages` from V1.0-of-V1.1 to verify Build Standard #1 cache discipline. Cheaper to add now than migrate later.
+- Used the existing `ChatbotIQ` Supabase project from prior session setup — region `ap-southeast-2` (Sydney). Backend remains in `us-west2`; cross-region database calls add ~150-200ms RTT, acceptable for testing. Region migration flagged for paying-client phase, not now.
+- New Supabase secret API key system used (`sb_secret_...` format, named `chatbotiq_backend`) over the legacy `service_role` JWT. Anthropic-style key naming wasn't allowed (no hyphens), used underscores instead.
+- Tag `v1.1` rotated from broken commit `bbd784a` to working commit `9273874` after rebuild. Tag deletion + re-creation is acceptable when the tag was never used as a rollback target — V1.0 was the only rollback target, untouched.
+
+**Broken / recovered:**
+Four broken deploys before the fifth landed. Sequence and root cause:
+
+1. `bbd784a` (V1.1 — conversation memory in Supabase) — `server.js` imported `isStructuredError` from `./lib/errors.js`, no such export. Hotfixed.
+2. `ced8678` (V1.1 hotfix — remove unused import) — `server.js` imported `routeStopReason`; the real export is `handleStopReason` with a different signature. Same class of mistake.
+3. (untagged commit) — additional name mismatches (`validateAssistantText` vs real `validateStreamedResponse`).
+4. (next push) — `import upunt from './config/upunt.js'` (default import); the real export is the named `upuntConfig`. Plus `CONFIG.system_prompt` referenced when CONFIG has no such field.
+
+Root cause: D2 generated V1.1 against assumed V1.0 export shapes rather than reading the actual V1.0 lib files. Fix-forward strategy compounded the mistake — each broken deploy generated another broken deploy because the assumption error wasn't corrected.
+
+Recovery: rolled back to V1.0 in Railway via Deployments → Redeploy on the original Session 17 deployment (4 days old). Production restored in ~30 seconds. Then forensically read V1.0 contracts via `git show v1.0:<path> | clip`, rebuilt three files (`anthropic.js`, `server.js`, `chat.js`) against the real V1.0 contract, pushed once, deployed clean.
+
+**Lesson promoted to D2 master prompt for next session:** when extending an existing version, D2 must read the file being extended via the version tag before generating its replacement. `git show <tag>:<path>` is the verification command. This is not "Pattern 12 user-paste-beats-guess" applied to the user — it's that pattern applied to D2 reading prior versions of the codebase. Discipline failure was D2's, not Gareth's.
+
+**Smoke test outcome (clean V1.1 deploy):**
+- "Hello" → bot identifies itself with `deployment_name` and `domain` from CONFIG ✓
+- "What did I just say?" → recalled "HELLO" verbatim — V1.1 memory confirmed ✓
+- "Who won the 2025 Melbourne Cup?" → INSUFFICIENT DATA, cited the Melbourne Cup date logic ✓
+- "Should I bet $500 on race 4?" → declined per `hard_guardrails`, redirected to user research ✓
+- "Remember the question I asked first" → recalled both prior turns in order — history depth confirmed ✓
+- "Tell me about harness racing" → INSUFFICIENT DATA citing thoroughbred-only domain ✓
+
+Token usage progression confirmed history is being sent: turn 1 = 111 input tokens; later turn = 421 input tokens; turn 6 = 467 input tokens. Growth from 111 → 467 = system prompt + accumulating history.
+
+`cache_read_input_tokens` = 0 on all turns. Expected. Anthropic ephemeral cache requires the cached block to exceed a minimum size (~1024 tokens) before caching engages. V1.0 system prompt is ~150 tokens. Cache machinery is wired correctly per Build Standard #1 (`cache_control: ephemeral` set on the system block); cache hits will start showing once V1.2 (KB content) or V1.5 (voice profile) push the system prompt past the threshold. Build Standard #1 is *architectural readiness* at V1.1.
+
+Supabase `messages` table after smoke test: 12 rows (6 user + 6 assistant), all under single `session_id` `402d151a-8e4d-4239-b47d-...`, `stop_reason: end_turn` on every assistant row, RLS disabled badge visible.
+
+**Build Standards check at V1.1:**
+- #1 prompt caching — wired correctly, cache hits gated on system-prompt size threshold (V1.2+) ✓
+- #2 structured error handling — extended to Supabase (`classifySupabaseError` in `lib/supabase.js`) ✓
+- #3 response validation — unchanged from V1.0, still passes ✓
+- #4 streaming on web chat — unchanged from V1.0, still works ✓
+- #5 stop_reason router — `end_turn` on every test turn, no warnings logged ✓
+- #6 pre-deployment checklist — 11/14 items pass, 3 deferred (cost estimate, hard-error path, external tester)
+
+**Pattern check (from `StreamlineAI_Agent_Methodology_v1.md`):**
+- Pattern 5 (CONFIG vs CODE) — clean. `config/upunt.js` unchanged from V1.0; engine extension lives in `lib/`, not in CONFIG.
+- Pattern 14 (Stop-And-Ask) — used four times this session: external service (Supabase signup), data shape (schema), irreversibility (commit + push, twice). All produced explicit user approval before action.
+- Pattern 15 (Build Journal Discipline) — entry being written now per protocol.
+- Pattern 16 (Handback to D1) — three handbacks deferred to D1: ship V1.0 timing, Railway upgrade timing, `chatbotiq-prod` key creation. Carried forward from Session 1.
+
+**Cost / spend state:**
+- `chatbotiq-dev` API key: workspace cap $40/month unchanged. Smoke test plus four-broken-deploy-recovery-churn estimated <$0.50.
+- Average input tokens per turn at V1.1: ~250 (across 6 turns). Output average: ~100. At Sonnet 4.5 pricing ($3/MTok input, $15/MTok output): per-100-messages estimate = $0.075 input + $0.150 output = ~$0.23 per 100 messages at current size. Will rise at V1.2 (KB) and V1.5 (voice profile expand system prompt).
+- Railway: $5 trial unchanged. ~5 days of trial used; ~25 days remaining.
+- Supabase: free tier, well under all limits (bytes used: KB-scale, well under 500MB cap).
+
+**Security state:**
+- New Supabase secret key `chatbotiq_backend` created with description "Railway backend — V1.1+". Default Supabase-generated `default` key untouched, flagged for tidy-up.
+- `SUPABASE_URL` and `SUPABASE_SECRET_KEY` added to Railway env vars. Total Railway env vars now 4 user-set + 8 Railway-set.
+- `.gitignore` continues to exclude `.env`. No secrets committed. Repo public.
+- ALLOWED_ORIGIN unchanged (`https://streamlineai-chatbotiq.netlify.app`).
+
+**Files changed at V1.1:**
+- New: `backend/db/schema.sql`, `backend/lib/supabase.js`, `backend/lib/sessions.js`, `backend/.env.example`
+- Modified: `backend/server.js`, `backend/lib/anthropic.js`, `backend/package.json`, `backend/package-lock.json`, `frontend/index.html`, `frontend/chat.js`, `frontend/style.css`, `README.md`
+- Final working commit: `9273874`. Tag `v1.1` rotated to point here.
+
+**Next:** Session 3 begins V1.2 — KB ingestion. Bot answers from stored knowledge.
+
+Pre-V1.2 admin (D1 side):
+- Decide on V1.0/V1.1 internal tester ship to Matty/Lingard (handback question #1, now applies to V1.1 as "ship V1.1 with memory or hold for V1.2 KB?")
+- Tidy-up: delete unused `default` Supabase secret key after confirming nothing references it
+- Open question: do we keep the V1.0-system-prompt size as-is, or expand it now to start exercising prompt caching? Opening for V1.2 scope discussion.
+
+**Open questions for D1:**
+- Same three carried from Session 1 (V1.0 ship timing, Railway upgrade timing, `chatbotiq-prod` key creation) — none resolved this session.
+- New: do we increase Supabase Pro upgrade priority given cross-region latency, or leave at free tier through V1.4?
+- New: methodology Pattern N candidate — "verify prior version's actual exports before extending". Specific case: D2 reading `git show v<tag>:<file>` before generating file replacements at V<tag+1>. Surfaces from this session's four-deploy churn. D1 to decide whether this lives in D2 master prompt only or promotes to methodology doc.
+
+---

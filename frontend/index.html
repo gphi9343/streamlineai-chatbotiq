@@ -3,34 +3,30 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>ChatbotIQ V1.0 — UPunt Test</title>
+  <title>ChatbotIQ — UPunt Testbed</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <header class="header">
-    <div class="brand">
-      <span class="brand-streamline">STREAMLINE</span><span class="brand-ai">AI</span>
-    </div>
-    <div class="tagline">CHATBOTIQ V1.0 — UPUNT TESTBED</div>
+  <header>
+    <h1>ChatbotIQ <span class="version">V1.1</span></h1>
+    <button id="new-conversation" class="btn-secondary" type="button">
+      New conversation
+    </button>
   </header>
 
-  <main class="chat-container">
-    <div id="messages" class="messages" aria-live="polite"></div>
+  <main>
+    <div id="messages" aria-live="polite"></div>
 
-    <form id="chat-form" class="chat-form" autocomplete="off">
+    <form id="chat-form" autocomplete="off">
       <input
-        id="chat-input"
-        class="chat-input"
+        id="input"
         type="text"
-        placeholder="Type your message..."
+        placeholder="Ask something…"
         maxlength="4000"
         required
-        aria-label="Message"
       />
-      <button id="chat-send" class="chat-send" type="submit">SEND</button>
+      <button id="send" type="submit">Send</button>
     </form>
-
-    <div id="status" class="status" role="status"></div>
   </main>
 
   <script src="chat.js"></script>

@@ -1,158 +1,162 @@
 // frontend/chat.js
-// V1.0 — single-turn chat. No memory, no history persistence.
-// Streams from backend's /chat endpoint via Server-Sent Events.
+//
+// V1.1 — adds session ID and SSE event parsing.
+//
+// Session ID: UUID generated client-side, persisted in localStorage.
+// Survives page reloads. Cleared via the "New conversation" button.
 
-// BACKEND_URL is injected at build time by Netlify env var, or hard-coded here for local testing.
-// Set this to your Railway backend URL after deployment.
-const BACKEND_URL = window.BACKEND_URL || 'https://streamlineai-chatbotiq-production.up.railway.app';
+(() => {
+  const BACKEND_URL = window.BACKEND_URL || 'https://streamlineai-chatbotiq-production.up.railway.app';
+  const SESSION_KEY = 'chatbotiq_session_id';
 
-const messagesEl = document.getElementById('messages');
-const formEl = document.getElementById('chat-form');
-const inputEl = document.getElementById('chat-input');
-const sendEl = document.getElementById('chat-send');
-const statusEl = document.getElementById('status');
+  const els = {
+    messages: document.getElementById('messages'),
+    form: document.getElementById('chat-form'),
+    input: document.getElementById('input'),
+    sendBtn: document.getElementById('send'),
+    newConvBtn: document.getElementById('new-conversation'),
+  };
 
-formEl.addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const message = inputEl.value.trim();
-  if (!message) return;
-
-  inputEl.value = '';
-  setBusy(true);
-  appendMessage('user', message);
-
-  const botMessageEl = appendMessage('bot', '', { streaming: true });
-
-  try {
-    await streamChat(message, (chunk) => {
-      // Append each token to the bot message as it arrives
-      const textEl = botMessageEl.querySelector('.message-text');
-      textEl.textContent += chunk;
-      messagesEl.scrollTop = messagesEl.scrollHeight;
-    });
-    // Stream completed — remove cursor
-    const cursor = botMessageEl.querySelector('.cursor');
-    if (cursor) cursor.remove();
-    statusEl.textContent = '';
-  } catch (err) {
-    // Replace partial bot message with error block
-    botMessageEl.remove();
-    appendError(err);
-  } finally {
-    setBusy(false);
-    inputEl.focus();
-  }
-});
-
-async function streamChat(message, onToken) {
-  const response = await fetch(`${BACKEND_URL}/chat`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message }),
-  });
-
-  if (!response.ok) {
-    // Non-streaming error response (validation failure, auth failure, etc.)
-    let errorBody;
-    try {
-      errorBody = await response.json();
-    } catch {
-      errorBody = { type: 'downstream_unavailable', message: `HTTP ${response.status}`, recoverable: true };
+  // --- Session management
+  function getSessionId() {
+    let id = localStorage.getItem(SESSION_KEY);
+    if (!id) {
+      id = crypto.randomUUID();
+      localStorage.setItem(SESSION_KEY, id);
     }
-    throw errorBody;
+    return id;
   }
 
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
+  function resetSession() {
+    localStorage.removeItem(SESSION_KEY);
+    els.messages.innerHTML = '';
+    appendStatus('New conversation started.');
+  }
 
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) break;
+  // --- DOM helpers
+  function appendMessage(role, text) {
+    const div = document.createElement('div');
+    div.className = `msg msg-${role}`;
+    div.textContent = text;
+    els.messages.appendChild(div);
+    els.messages.scrollTop = els.messages.scrollHeight;
+    return div;
+  }
 
-    buffer += decoder.decode(value, { stream: true });
+  function appendStatus(text) {
+    const div = document.createElement('div');
+    div.className = 'msg msg-status';
+    div.textContent = text;
+    els.messages.appendChild(div);
+    els.messages.scrollTop = els.messages.scrollHeight;
+  }
 
-    // SSE format: events separated by \n\n, each event has data: <json>
-    const events = buffer.split('\n\n');
-    buffer = events.pop(); // last partial event stays in buffer
+  function setBusy(busy) {
+    els.sendBtn.disabled = busy;
+    els.input.disabled = busy;
+  }
 
-    for (const event of events) {
-      const dataLine = event.split('\n').find((l) => l.startsWith('data: '));
-      if (!dataLine) continue;
-      const json = dataLine.slice(6); // strip "data: "
-      try {
-        const parsed = JSON.parse(json);
-        if (parsed.type === 'token') {
-          onToken(parsed.text);
-        } else if (parsed.type === 'error') {
-          throw parsed.error;
-        } else if (parsed.type === 'done') {
-          // Stream complete, server-side stop_reason and usage available
-          // V1.0 doesn't surface these to the user. V1.7 dashboard will.
+  // --- SSE handler — fetch + ReadableStream (works with POST, unlike EventSource)
+  async function streamChat(message, assistantDiv) {
+    const sessionId = getSessionId();
+
+    let response;
+    try {
+      response = await fetch(`${BACKEND_URL}/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: sessionId, message }),
+      });
+    } catch (err) {
+      appendStatus(`Network error: ${err.message}`);
+      return;
+    }
+
+    if (!response.ok) {
+      const errText = await response.text();
+      appendStatus(`Error ${response.status}: ${errText}`);
+      return;
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      // Parse SSE events: blocks separated by blank line
+      const blocks = buffer.split('\n\n');
+      buffer = blocks.pop(); // last incomplete block goes back to buffer
+
+      for (const block of blocks) {
+        if (!block.trim()) continue;
+        const event = parseSSEBlock(block);
+        if (!event) continue;
+
+        if (event.event === 'token') {
+          assistantDiv.textContent += event.data.text;
+          els.messages.scrollTop = els.messages.scrollHeight;
+        } else if (event.event === 'error') {
+          appendStatus(
+            `Error: ${event.data.message}${
+              event.data.suggestion ? ` — ${event.data.suggestion}` : ''
+            }`
+          );
+        } else if (event.event === 'stop_reason') {
+          // Diagnostic only — non-end_turn cases
+          console.warn('[chatbotiq] stop_reason:', event.data);
+        } else if (event.event === 'done') {
+          // Optional: surface token usage in dev console
+          console.log('[chatbotiq] done:', event.data);
         }
-      } catch (parseErr) {
-        if (parseErr.type) throw parseErr; // re-throw structured errors
-        console.warn('[sse_parse_error]', parseErr, json);
       }
     }
   }
-}
 
-function appendMessage(role, text, { streaming = false } = {}) {
-  const wrapper = document.createElement('div');
-  wrapper.className = `message message-${role}`;
-
-  const label = document.createElement('span');
-  label.className = 'message-label';
-  label.textContent = role === 'user' ? 'You' : 'Bot';
-  wrapper.appendChild(label);
-
-  const textEl = document.createElement('span');
-  textEl.className = 'message-text';
-  textEl.textContent = text;
-  wrapper.appendChild(textEl);
-
-  if (streaming) {
-    const cursor = document.createElement('span');
-    cursor.className = 'cursor';
-    wrapper.appendChild(cursor);
+  function parseSSEBlock(block) {
+    const lines = block.split('\n');
+    let eventName = 'message';
+    let dataLines = [];
+    for (const line of lines) {
+      if (line.startsWith('event:')) eventName = line.slice(6).trim();
+      else if (line.startsWith('data:')) dataLines.push(line.slice(5).trim());
+    }
+    if (!dataLines.length) return null;
+    try {
+      return { event: eventName, data: JSON.parse(dataLines.join('\n')) };
+    } catch {
+      return null;
+    }
   }
 
-  messagesEl.appendChild(wrapper);
-  messagesEl.scrollTop = messagesEl.scrollHeight;
-  return wrapper;
-}
+  // --- Form submit
+  els.form.addEventListener('submit', async ev => {
+    ev.preventDefault();
+    const message = els.input.value.trim();
+    if (!message) return;
 
-function appendError(err) {
-  const wrapper = document.createElement('div');
-  wrapper.className = 'message message-error';
+    appendMessage('user', message);
+    els.input.value = '';
+    const assistantDiv = appendMessage('assistant', '');
+    setBusy(true);
 
-  const label = document.createElement('span');
-  label.className = 'message-label';
-  label.textContent = `Error — ${err?.type || 'unknown'}`;
-  wrapper.appendChild(label);
+    try {
+      await streamChat(message, assistantDiv);
+    } finally {
+      setBusy(false);
+      els.input.focus();
+    }
+  });
 
-  const textEl = document.createElement('span');
-  textEl.className = 'message-text';
-  textEl.textContent = err?.message || 'Something went wrong.';
-  wrapper.appendChild(textEl);
-
-  if (err?.suggestion) {
-    const suggEl = document.createElement('div');
-    suggEl.style.marginTop = '0.5rem';
-    suggEl.style.fontSize = '0.85rem';
-    suggEl.style.opacity = '0.8';
-    suggEl.textContent = err.suggestion;
-    wrapper.appendChild(suggEl);
+  // --- New conversation
+  if (els.newConvBtn) {
+    els.newConvBtn.addEventListener('click', resetSession);
   }
 
-  messagesEl.appendChild(wrapper);
-  messagesEl.scrollTop = messagesEl.scrollHeight;
-}
-
-function setBusy(busy) {
-  inputEl.disabled = busy;
-  sendEl.disabled = busy;
-  statusEl.textContent = busy ? 'Thinking...' : '';
-  statusEl.className = 'status';
-}
+  // --- Boot
+  els.input.focus();
+  console.log('[chatbotiq] V1.1 client ready. Session:', getSessionId());
+})();

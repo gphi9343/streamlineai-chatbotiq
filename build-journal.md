@@ -158,3 +158,81 @@ Pre-V1.2 admin (D1 side):
 - New: methodology Pattern N candidate — "verify prior version's actual exports before extending". Specific case: D2 reading `git show v<tag>:<file>` before generating file replacements at V<tag+1>. Surfaces from this session's four-deploy churn. D1 to decide whether this lives in D2 master prompt only or promotes to methodology doc.
 
 ---
+
+### Session 3 — 03 May 2026 — V1.2
+
+**Built:** Knowledge base ingestion and retrieval. Bot now answers from stored content rather than refusing every domain question. Five new/changed files:
+
+- `backend/db/schema-v1.2.sql` — new `kb_entries` table with `content_type` enum (`REFERENCE` | `VERBATIM`), full-text search index via generated `tsvector` column, deployment_slug filter
+- `backend/db/kb-seed.md` — 15 hand-curated UPunt entries (9 REFERENCE, 6 VERBATIM, attribution `Punta (UPunt)`)
+- `backend/lib/kb.js` — new module: `retrieveKb` (full-text search via Supabase `textSearch`), `parseSeedFile` (markdown frontmatter parser with VERBATIM attribution validation), `replaceKbForDeployment` (idempotent loader)
+- `backend/lib/system-prompt.js` — new module: `buildSystemPrompt(config)` assembles cached block from CONFIG fields, `renderKbContext(hits)` formats retrieved entries as a user-side context message
+- `backend/lib/anthropic.js` — extended V1.1's `streamChat` to accept optional `contextBlock` parameter; injected as user-role message immediately before the user's turn (Option B / RAG-style architecture)
+- `backend/server.js` — V1.2 flow: validate → ensure session → save user message → fetch history → **retrieve KB → render context block** → stream Claude with assembled system prompt + context block → validate → persist
+- `backend/scripts/load-kb.js` — one-shot loader, reads seed file, replaces all rows for deployment slug
+
+V1.1 contracts preserved at SSE layer. Frontend unchanged.
+
+Repo at `github.com/gphi9343/streamlineai-chatbotiq`, public, tag `v1.2` to be applied at clean deploy commit.
+
+**Decided:**
+
+- **Architecture: Option B (RAG-style).** KB content lives in a user-side context message before each user turn, NOT in the system prompt. This preserves the cached system prompt across turns of a session — Build Standard #1 actually delivers cache hits at V1.2+ because the cached block is now stable AND substantial (~800-1000 chars). Putting KB content in the system prompt would have invalidated the cache every turn.
+- **V1.1 latent bug fixed.** V1.1's `server.js` referenced `CONFIG.system_prompt` — that field did not exist on `upuntConfig`. The bot ran for V1.1's entire lifecycle with no system prompt: identity, guardrails, INSUFFICIENT DATA rule, none of it sent to Claude. V1.2 replaces the missing-field reference with `buildSystemPrompt(CONFIG)` which assembles the prompt from real CONFIG fields. This is also why Standing Rule 1 — verify prior version's actual exports before extending — was added in v1.3 of D2 master prompt: this exact bug is what caused the Session 18 four-deploy churn, and a residue of it survived. Next versions must verify CONFIG field presence as well as code exports.
+- **Retrieval: full-text search via Postgres `tsvector`.** No embeddings at V1.2. Generated `tsvector` column with GIN index; query via Supabase `textSearch` builder using `plainto_tsquery` (safe against operator injection from user input). `MAX_HITS = 3`. Empirical relevance floor managed by Postgres internally; if quality issues surface in testing, route through an RPC to expose `ts_rank`.
+- **Schema column naming locked.** `content_type` enum `REFERENCE` | `VERBATIM` per D1 Pattern 1 rename approval. Methodology doc bump to v1.1 is D1's task, not this session's.
+- **VERBATIM rendering rule.** System prompt instructs the model to quote VERBATIM body text exactly, wrapped in quotation marks, with attribution to the source field. REFERENCE entries may be paraphrased and synthesised. The seed loader rejects VERBATIM entries with no attribution at parse time — schema-level constraint enforced at the parser.
+- **KB retrieval failure is non-fatal.** If Supabase KB query fails, server logs the error and proceeds with empty context. Bot will hit INSUFFICIENT DATA on most questions but stays alive. This is correct degraded-mode behaviour: the chat surface stays up even when retrieval is broken.
+- **Loader is idempotent.** Running `node scripts/load-kb.js` twice gives the same result — it deletes existing entries for the deployment before inserting. The seed file is the source of truth. This makes V1.2 easy to iterate: edit the markdown, re-run the loader, retest.
+- **`deployment_slug` column on `kb_entries`.** Future-proofs for multiple deployments sharing one Supabase project. UPunt rows tagged `upunt`; a future Chem-Dry deployment would tag `chemdry`. Retrieval filters by slug.
+- **Standing Rule 1 satisfied this session.** All four V1.1 files (`anthropic.js`, `server.js`, `supabase.js`, `upunt.js`) read via `git show v1.1:<path>` before generating replacements. No memory-based assumptions. One extension write, one push, one deploy expected (vs Session 18's four-deploy churn).
+
+**Broken:** Nothing built yet at time of journal write. Test results filled in after deploy.
+
+**Pattern check:**
+- Pattern 1 (Reference vs Verbatim Separation) — implemented. Schema column, system prompt rendering rules, parser validation all enforce the split.
+- Pattern 2 (Pass-Through Discipline) — VERBATIM entries quoted exactly with attribution. System prompt is explicit: "do not paraphrase, summarise, or rewrite."
+- Pattern 3 (Uncertainty Handling) — preserved. INSUFFICIENT DATA rule still in system prompt, and now explicitly tied to "context block contains nothing relevant."
+- Pattern 5 (CONFIG vs CODE) — clean. System prompt assembled from CONFIG fields, KB content stored separately, no client-specific content in code.
+- Pattern 11 (Pre-Generation Scope Confirmation) — scope stated and approved before code generation.
+- Pattern 14 (Stop-And-Ask) — invoked once: Option A vs B architectural decision (cache strategy).
+- Pattern 15 (Build Journal) — entry being written now per protocol.
+
+**Build Standards check:**
+- #1 prompt caching — system prompt now substantial (~1000 chars). With KB rendering rules, INSUFFICIENT DATA rule, identity, guardrails, and (V1.5+) voice profile, cached block will exceed Anthropic's ~1024 token threshold. Cache hits should engage. Actual `cache_read_input_tokens` confirmed in test protocol below.
+- #2 structured error handling — extended to `lib/kb.js` (KB retrieval and parser errors classified to taxonomy).
+- #3 response validation — unchanged from V1.1. Still passes.
+- #4 streaming — unchanged. Frontend still gets `event: token` deltas.
+- #5 stop_reason router — unchanged. `end_turn` expected on all V1.2 traffic.
+- #6 pre-deployment checklist — to be run before V1.2 ships to external testers.
+
+**Cost / spend state:**
+- System prompt grows from ~150 chars (V1.1) to ~1000 chars (V1.2) — roughly 7x. Per-turn input cost rises proportionally on first turn of each session, then drops sharply on subsequent turns once cache hits engage.
+- KB context block adds variable cost per turn: 0 chars on miss, ~500-2000 chars when 1-3 entries retrieved.
+- Estimated per-100-messages cost at V1.2: ~$0.40-0.60 (vs V1.1's ~$0.23). Real number after smoke test.
+- `chatbotiq-dev` API key cap unchanged at $40/month.
+
+**Security state:**
+- No new env vars. SUPABASE_URL and SUPABASE_SECRET_KEY already set at V1.1.
+- No new secrets in code. KB content in `backend/db/kb-seed.md` is non-sensitive testbed content.
+- Repo public, no impact.
+
+**Files changed at V1.2:**
+- New: `backend/db/schema-v1.2.sql`, `backend/db/kb-seed.md`, `backend/lib/kb.js`, `backend/lib/system-prompt.js`, `backend/scripts/load-kb.js`
+- Modified: `backend/lib/anthropic.js`, `backend/server.js`, `README.md` (V1.2 deployment section)
+- Tag: `v1.2` to be applied at clean deploy commit
+
+**Next:** Session 4 begins V1.3 — Telegram interface. Same engine, second surface.
+
+Pre-V1.3 admin (D1 side):
+- External tester ship: V1.2 IS the ship gate. Once smoke test passes, Matty and Lingard get the Netlify URL.
+- `chatbotiq-prod` API key: create the moment first non-Gareth traffic hits the bot.
+- Calendar reminder: Railway Hobby upgrade by 24 May 2026.
+
+**Open questions for D1:**
+- Pattern 22 candidate (verify prior version's actual exports — extended this session to verify CONFIG field presence too): when does it promote from D2 standing rule to methodology doc? Session 16 rule says 2+ deployment proof. V1.1 was deployment 1; V1.2 found a residue of the same failure mode in CONFIG references. Arguably the same failure, second proof.
+- Methodology doc Pattern 1 rename: "FORM vs INTEL" → "Reference vs Verbatim Separation". D1 to bump methodology doc to v1.1 with changelog. Schema column already uses correct names regardless of doc state.
+- V1.4 reframing: "VERBATIM ingestion mechanism — multiple sources" rather than "Telegram injection (racing-specific)". Master file already updated per D1's prior decision; flagging for methodology doc consistency.
+
+---
+

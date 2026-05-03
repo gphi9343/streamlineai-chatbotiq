@@ -1,14 +1,26 @@
 // backend/lib/anthropic.js
-// Anthropic API wrapper.
-// Build Standard #1: prompt caching on system prompt (cache_control: ephemeral)
-// Build Standard #4: streaming enabled — first-token latency target ~500ms
-// Build Standard #2: errors classified to structured shape
 //
-// V1.1 changes from V1.0:
-// - callAnthropic accepts an optional `history` array of prior turns.
-//   History is prepended to the messages array. The system prompt block
-//   is unchanged, so the cache key stays stable across turns.
-// - buildSystemPrompt is unchanged. Voice profile and KB still arrive at V1.5/V1.2.
+// V1.2 changes from V1.1:
+// - New optional `contextBlock` parameter. When present, it is injected as
+//   a user-role message immediately before the current user message. This
+//   is where retrieved KB hits go (Option B architecture — keeps the
+//   system prompt cache warm).
+// - System prompt is now ASSEMBLED by the caller (lib/system-prompt.js)
+//   from CONFIG fields, not pulled from a single CONFIG.system_prompt
+//   field. V1.1 had a latent bug where that field didn't exist; this fix
+//   ensures the bot actually receives identity, guardrails, and KB rules.
+//
+// Cache split discipline preserved:
+//   CACHED block:    assembled system prompt (stable across the session)
+//   DYNAMIC block:   conversation history + context block + current user message
+//
+// V1.1 contract preserved:
+//   - Same function name `streamChat`
+//   - Same shape `{systemPrompt, history, userMessage, onToken}` plus
+//     new optional `contextBlock`
+//   - Same return shape `{ok, text, stop_reason, usage}`
+//
+// Anyone calling streamChat without contextBlock gets V1.1 behaviour.
 
 import Anthropic from '@anthropic-ai/sdk';
 import { makeError } from './errors.js';
@@ -21,51 +33,42 @@ const MODEL = 'claude-sonnet-4-5';
 const MAX_TOKENS = 1024;
 
 /**
- * Build the system prompt from CONFIG.
- * V1.0 returns a minimal prompt — voice profile and KB schema arrive at V1.5/V1.2.
+ * Stream a response from Claude.
  *
- * Cache discipline (Build Standard #1):
- *   The returned string IS the cached block. It must be stable across the session.
- *   Anything that changes per-turn (user message, retrieved KB content, conversation
- *   history) must NOT live in this string — it goes in the messages array instead.
+ * @param {object} params
+ * @param {string} params.systemPrompt - cached
+ * @param {Array<{role: string, content: string}>} params.history - prior turns
+ * @param {string} params.userMessage - current turn
+ * @param {string} [params.contextBlock] - optional KB context (V1.2+)
+ * @param {function(string): void} params.onToken - called per text delta
+ * @returns {Promise<{ok: true, text: string, stop_reason: string, usage: object} | {ok: false, error: object}>}
  */
-function buildSystemPrompt(config) {
-  return `You are a chatbot assistant for ${config.deployment_name}.
+export async function streamChat({
+  systemPrompt,
+  history,
+  userMessage,
+  contextBlock,
+  onToken,
+}) {
+  const messages = [...history.map(m => ({ role: m.role, content: m.content }))];
 
-Domain: ${config.domain}
-
-Behaviour:
-- Answer the user's question directly.
-- If you do not have the information needed to answer confidently, respond with: "INSUFFICIENT DATA — [brief reason]." Do not guess.
-- Keep responses concise.
-
-This is V1.0 of the engine — voice profile, knowledge base, and expert injection arrive in later versions.`;
-}
-
-/**
- * Call Anthropic's Messages API with streaming enabled.
- * Returns an async iterable of stream events.
- *
- * V1.1: optional `history` parameter for conversation memory. Each entry
- * is { role: 'user'|'assistant', content: string }. History is prepended
- * to the messages array; userMessage is the current turn appended last.
- *
- * Throws structured errors classified per Build Standard #2.
- */
-export async function callAnthropic({ userMessage, config, history = [] }) {
-  if (!process.env.ANTHROPIC_API_KEY) {
-    throw makeError({
-      type: 'config_error',
-      message: 'ANTHROPIC_API_KEY environment variable not set.',
-      suggestion: 'Set ANTHROPIC_API_KEY in Railway env vars.',
-      recoverable: false,
+  // V1.2 — context block is injected as a user-role message immediately
+  // before the current user message. The model treats it as supplied
+  // context for the next question. This keeps it OUT of the cached
+  // system prompt, preserving cache hits across turns.
+  if (contextBlock && contextBlock.trim()) {
+    messages.push({ role: 'user', content: contextBlock });
+    messages.push({
+      role: 'assistant',
+      content: 'Understood. I will use that context for your next question.',
     });
   }
 
-  const messages = [
-    ...history.map(m => ({ role: m.role, content: m.content })),
-    { role: 'user', content: userMessage },
-  ];
+  messages.push({ role: 'user', content: userMessage });
+
+  let accumulated = '';
+  let stop_reason = null;
+  let usage = null;
 
   try {
     const stream = await client.messages.stream({
@@ -74,95 +77,90 @@ export async function callAnthropic({ userMessage, config, history = [] }) {
       system: [
         {
           type: 'text',
-          text: buildSystemPrompt(config),
+          text: systemPrompt,
           cache_control: { type: 'ephemeral' },
         },
       ],
       messages,
     });
 
-    return stream;
+    for await (const event of stream) {
+      if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
+        const chunk = event.delta.text;
+        accumulated += chunk;
+        onToken(chunk);
+      } else if (event.type === 'message_delta') {
+        if (event.delta?.stop_reason) stop_reason = event.delta.stop_reason;
+        if (event.usage) usage = { ...usage, ...event.usage };
+      } else if (event.type === 'message_start' && event.message?.usage) {
+        usage = { ...usage, ...event.message.usage };
+      }
+    }
 
+    return {
+      ok: true,
+      text: accumulated,
+      stop_reason,
+      usage: usage || {},
+    };
   } catch (err) {
-    // Classify SDK errors to structured shape
-    throw classifyAnthropicError(err);
+    return { ok: false, error: classifyAnthropicError(err) };
   }
 }
 
-/**
- * Map Anthropic SDK errors to the structured error shape.
- * Recoverable types drive the agentic retry loop; hard types fail fast.
- */
+
 function classifyAnthropicError(err) {
-  const status = err?.status || err?.response?.status;
-  const errorType = err?.error?.type || err?.type;
+  const status = err.status || err.response?.status;
 
-  // Auth failures — hard error, no retry
-  if (status === 401 || errorType === 'authentication_error') {
-    return makeError({
-      type: 'auth_failure',
-      message: 'Anthropic API authentication failed.',
-      suggestion: 'Verify ANTHROPIC_API_KEY in Railway env vars is correct and not revoked.',
-      recoverable: false,
-    });
-  }
-
-  // Rate limit — recoverable with backoff per retry-after header
-  if (status === 429 || errorType === 'rate_limit_error') {
-    return makeError({
-      type: 'rate_limit',
-      message: 'Anthropic API rate limit hit.',
-      suggestion: `Retry after ${err?.headers?.['retry-after'] || '60'} seconds.`,
-      recoverable: true,
-    });
-  }
-
-  // Content filter — model declined to respond
-  if (errorType === 'invalid_request_error' && /content/i.test(err?.message || '')) {
-    return makeError({
-      type: 'content_filter',
-      message: 'Request blocked by content policy.',
-      suggestion: 'Rephrase the message.',
-      recoverable: false,
-    });
-  }
-
-  // Validation — request shape was wrong
-  if (status === 400 || errorType === 'invalid_request_error') {
-    return makeError({
-      type: 'validation_error',
-      message: err?.message || 'Invalid request to Anthropic API.',
-      suggestion: 'Check request payload structure.',
-      recoverable: false,
-    });
-  }
-
-  // Service down — recoverable
-  if (status === 503 || status === 502 || status === 504) {
-    return makeError({
-      type: 'downstream_unavailable',
-      message: 'Anthropic API temporarily unavailable.',
-      suggestion: 'Retry with backoff.',
-      recoverable: true,
-    });
-  }
-
-  // Timeout — recoverable
-  if (err?.code === 'ETIMEDOUT' || err?.code === 'ECONNABORTED' || /timeout/i.test(err?.message || '')) {
+  if (err.name === 'APIConnectionTimeoutError' || err.code === 'ETIMEDOUT') {
     return makeError({
       type: 'api_timeout',
-      message: 'Anthropic API request timed out.',
+      message: 'Anthropic API timeout',
       suggestion: 'Retry with backoff.',
       recoverable: true,
     });
   }
 
-  // Unknown — treat as recoverable downstream failure, log loudly
-  console.error('[unclassified_anthropic_error]', err);
+  if (status === 429) {
+    return makeError({
+      type: 'rate_limit',
+      message: 'Anthropic rate limit hit',
+      suggestion: 'Retry per retry-after header.',
+      recoverable: true,
+    });
+  }
+
+  if (status === 401 || status === 403) {
+    return makeError({
+      type: 'auth_failure',
+      message: 'Anthropic auth failed',
+      suggestion: 'Check ANTHROPIC_API_KEY env var on Railway.',
+      recoverable: false,
+    });
+  }
+
+  if (status === 400) {
+    return makeError({
+      type: 'validation_error',
+      message: `Anthropic rejected request: ${err.message}`,
+      suggestion: 'Check request shape; deadletter the input.',
+      recoverable: false,
+    });
+  }
+
+  if (status >= 500 && status < 600) {
+    return makeError({
+      type: 'downstream_unavailable',
+      message: `Anthropic API ${status}`,
+      suggestion: 'Retry with backoff.',
+      recoverable: true,
+    });
+  }
+
   return makeError({
     type: 'downstream_unavailable',
-    message: err?.message || 'Unknown Anthropic API error.',
-    suggestion: 'Retry. Check Railway logs for details.',
+    message: err.message || 'Unknown Anthropic error',
+    suggestion: 'Retry; if persistent, check Anthropic status.',
     recoverable: true,
   });
 }

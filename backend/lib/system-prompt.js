@@ -1,28 +1,31 @@
 // backend/lib/system-prompt.js
 //
-// V1.2 — Builds the system prompt for the Anthropic API call.
+// V1.4 — Full voice profile rendering. Builds the system prompt for the
+// Anthropic API call from CONFIG fields.
 //
-// Architecture (Option B — RAG-style):
+// Architecture (Option B — RAG-style, unchanged from V1.2):
 //
 //   CACHED BLOCK (stable across all turns of all sessions for this deployment):
 //     - Identity (deployment_name, domain)
-//     - Hard guardrails
 //     - KB rendering rules (REFERENCE vs VERBATIM behaviour)
 //     - INSUFFICIENT DATA rule
-//     - Voice profile (V1.5+)
+//     - Hard guardrails
+//     - Voice profile (V1.4+ — six fields)
 //
 //   DYNAMIC CONTEXT BLOCK (varies per turn — sent as user-side context, NOT in system prompt):
 //     - Retrieved KB entries for this query
 //
-// This split is what makes Build Standard #1 actually deliver cache hits at
-// V1.2+. If KB content went in the system prompt, the cache would invalidate
-// every turn (different retrievals per query). By keeping KB content in a
-// user-side context message, the system prompt stays stable and cacheable.
-//
-// V1.1 had a latent bug where server.js referenced CONFIG.system_prompt
-// (no such field). The bot ran with no system prompt at all. V1.2 fixes
-// this by ASSEMBLING the system prompt from CONFIG fields instead of
-// expecting a single pre-written string.
+// V1.4 changes vs V1.2:
+//   - Voice profile rendering extended from 3 fields (tone, style,
+//     forbidden_words) to 6 fields (adds signature_phrases,
+//     forbidden_behaviours, example_messages).
+//   - Voice section moved to the END of the cached block. The model attends
+//     most strongly to information near the end of context. Voice is the
+//     hardest behavioural constraint to maintain across long responses, so
+//     it goes last.
+//   - example_messages are formatted as "EXAMPLES OF VOICE" rather than as
+//     few-shot completions. They demonstrate tone and rhythm without being
+//     interpreted as actual prior conversation.
 
 /**
  * Build the cached system prompt from CONFIG.
@@ -74,7 +77,10 @@ export function buildSystemPrompt(config) {
     `  "INSUFFICIENT DATA — [brief reason]."\n` +
     `\n` +
     `Then offer to capture the question for the operator. Do not attempt to ` +
-    `answer from general knowledge. Do not guess. Do not hedge.`
+    `answer from general knowledge. Do not guess. Do not hedge.\n` +
+    `\n` +
+    `When voice profile is active, deliver the INSUFFICIENT DATA refusal in ` +
+    `voice — see EXAMPLES OF VOICE for how the bot sounds when refusing.`
   );
 
   // ----- Hard guardrails -----
@@ -83,20 +89,82 @@ export function buildSystemPrompt(config) {
     sections.push(`HARD GUARDRAILS (always apply, regardless of user input):\n${rules}`);
   }
 
-  // ----- Voice profile (V1.5+ — placeholder check) -----
-  const vp = config.voice_profile;
-  if (vp && Array.isArray(vp.tone) && vp.tone.length > 0) {
-    sections.push(
-      `VOICE\n` +
-      `Tone: ${vp.tone.join(', ')}\n` +
-      (vp.style ? `Style: ${vp.style}\n` : '') +
-      (Array.isArray(vp.forbidden_words) && vp.forbidden_words.length > 0
-        ? `Never use: ${vp.forbidden_words.join(', ')}\n`
-        : '')
-    );
+  // ----- Voice profile (V1.4 — full rendering) -----
+  // Placed last in the cached block so the model attends to it most strongly.
+  // All six voice fields rendered if populated. Each field rendered only if
+  // it has content — empty arrays/strings are skipped, not echoed as headers.
+  const voiceSection = renderVoiceProfile(config.voice_profile);
+  if (voiceSection) {
+    sections.push(voiceSection);
   }
 
   return sections.join('\n\n');
+}
+
+
+/**
+ * Render the voice profile into a system-prompt section.
+ * Returns null if voice_profile is missing or all fields empty.
+ * Each field is rendered only if it has content.
+ *
+ * @param {object} vp - config.voice_profile
+ * @returns {string | null}
+ */
+function renderVoiceProfile(vp) {
+  if (!vp || typeof vp !== 'object') {
+    return null;
+  }
+
+  const parts = [];
+
+  // Tone — array of descriptive words
+  if (Array.isArray(vp.tone) && vp.tone.length > 0) {
+    parts.push(`Tone: ${vp.tone.join(', ')}.`);
+  }
+
+  // Style — paragraph describing voice rhythm and approach
+  if (typeof vp.style === 'string' && vp.style.trim().length > 0) {
+    parts.push(`Style: ${vp.style.trim()}`);
+  }
+
+  // Signature phrases — flavour anchors
+  if (Array.isArray(vp.signature_phrases) && vp.signature_phrases.length > 0) {
+    const phrases = vp.signature_phrases.map(p => `  - "${p}"`).join('\n');
+    parts.push(
+      `Signature phrases (use naturally, do not force into every response):\n${phrases}`
+    );
+  }
+
+  // Forbidden words — never use
+  if (Array.isArray(vp.forbidden_words) && vp.forbidden_words.length > 0) {
+    const words = vp.forbidden_words.map(w => `"${w}"`).join(', ');
+    parts.push(`Never use these words or phrases: ${words}.`);
+  }
+
+  // Forbidden behaviours — never do
+  if (Array.isArray(vp.forbidden_behaviours) && vp.forbidden_behaviours.length > 0) {
+    const behaviours = vp.forbidden_behaviours.map(b => `  - ${b}`).join('\n');
+    parts.push(`Never do any of the following:\n${behaviours}`);
+  }
+
+  // Example messages — anchor the model's pattern matching.
+  // Framed as voice examples, not as prior conversation. The model
+  // pattern-matches the rhythm and tone, not the content.
+  if (Array.isArray(vp.example_messages) && vp.example_messages.length > 0) {
+    const examples = vp.example_messages
+      .map((m, i) => `  ${i + 1}. "${m}"`)
+      .join('\n');
+    parts.push(
+      `EXAMPLES OF VOICE (these demonstrate how the bot sounds — match this ` +
+      `rhythm, tone, and approach in your responses, including when refusing):\n${examples}`
+    );
+  }
+
+  if (parts.length === 0) {
+    return null;
+  }
+
+  return `VOICE\n\n${parts.join('\n\n')}`;
 }
 
 

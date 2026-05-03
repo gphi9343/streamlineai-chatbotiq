@@ -18,7 +18,7 @@ import express from 'express';
 import cors from 'cors';
 
 import { streamChat } from './lib/anthropic.js';
-import { makeError, isStructuredError } from './lib/errors.js';
+import { makeError } from './lib/errors.js';
 import { routeStopReason } from './lib/stop-reason.js';
 import { validateAssistantText } from './lib/validate.js';
 import { isValidSessionId } from './lib/sessions.js';

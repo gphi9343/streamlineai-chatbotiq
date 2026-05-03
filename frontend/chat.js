@@ -1,9 +1,14 @@
 // frontend/chat.js
-//
-// V1.1 — adds session ID and SSE event parsing.
+// V1.1 — adds session ID, parses V1.0-format SSE events.
 //
 // Session ID: UUID generated client-side, persisted in localStorage.
 // Survives page reloads. Cleared via the "New conversation" button.
+//
+// SSE event format (matches V1.0 backend):
+//   Each event is `data: {json}\n\n`. JSON has a `type` field:
+//     - { type: "token", text: "..." }       — append to assistant message
+//     - { type: "done", stop_reason, usage } — stream complete
+//     - { type: "error", error: {...} }      — structured error
 
 (() => {
   const BACKEND_URL = window.BACKEND_URL || 'https://streamlineai-chatbotiq-production.up.railway.app';
@@ -73,8 +78,14 @@
     }
 
     if (!response.ok) {
-      const errText = await response.text();
-      appendStatus(`Error ${response.status}: ${errText}`);
+      // Non-streaming error response (validation failures before stream starts)
+      let errBody;
+      try {
+        errBody = await response.json();
+      } catch {
+        errBody = { message: await response.text() };
+      }
+      appendStatus(`Error ${response.status}: ${errBody.message || 'unknown'}`);
       return;
     }
 
@@ -93,40 +104,37 @@
 
       for (const block of blocks) {
         if (!block.trim()) continue;
-        const event = parseSSEBlock(block);
-        if (!event) continue;
+        const data = parseSSEBlock(block);
+        if (!data) continue;
 
-        if (event.event === 'token') {
-          assistantDiv.textContent += event.data.text;
+        if (data.type === 'token') {
+          assistantDiv.textContent += data.text;
           els.messages.scrollTop = els.messages.scrollHeight;
-        } else if (event.event === 'error') {
+        } else if (data.type === 'error') {
+          const err = data.error || {};
           appendStatus(
-            `Error: ${event.data.message}${
-              event.data.suggestion ? ` — ${event.data.suggestion}` : ''
+            `Error: ${err.message || 'unknown'}${
+              err.suggestion ? ` — ${err.suggestion}` : ''
             }`
           );
-        } else if (event.event === 'stop_reason') {
-          // Diagnostic only — non-end_turn cases
-          console.warn('[chatbotiq] stop_reason:', event.data);
-        } else if (event.event === 'done') {
+        } else if (data.type === 'done') {
           // Optional: surface token usage in dev console
-          console.log('[chatbotiq] done:', event.data);
+          console.log('[chatbotiq] done:', data);
         }
       }
     }
   }
 
+  // V1.0 backend uses untyped SSE — only `data:` lines, JSON contains `type`
   function parseSSEBlock(block) {
     const lines = block.split('\n');
-    let eventName = 'message';
-    let dataLines = [];
+    const dataLines = [];
     for (const line of lines) {
-      if (line.startsWith('event:')) eventName = line.slice(6).trim();
-      else if (line.startsWith('data:')) dataLines.push(line.slice(5).trim());
+      if (line.startsWith('data:')) dataLines.push(line.slice(5).trim());
     }
     if (!dataLines.length) return null;
     try {
-      return { event: eventName, data: JSON.parse(dataLines.join('\n')) };
+      return JSON.parse(dataLines.join('\n'));
     } catch {
       return null;
     }

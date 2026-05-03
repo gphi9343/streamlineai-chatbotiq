@@ -234,5 +234,33 @@ Pre-V1.3 admin (D1 side):
 - Methodology doc Pattern 1 rename: "FORM vs INTEL" → "Reference vs Verbatim Separation". D1 to bump methodology doc to v1.1 with changelog. Schema column already uses correct names regardless of doc state.
 - V1.4 reframing: "VERBATIM ingestion mechanism — multiple sources" rather than "Telegram injection (racing-specific)". Master file already updated per D1's prior decision; flagging for methodology doc consistency.
 
+### Session 3 — POSTSCRIPT (added end of session)
+
+**Frontend cache + silent SSE failure mode (Pattern 22 candidate, sibling to Standing Rule 1)**
+
+Smoke test of V1.2 initially appeared to fail. Symptom: user message rendered, but assistant responses showed as empty black bubbles with no error message. No console errors. No red text. Just empty bubbles.
+
+Diagnosis took ~25 minutes. Root cause was two-layered:
+
+1. **Netlify cache held the V1.1 frontend.** Although V1.2 frontend was committed and pushed, the browser was still running cached V1.1 `chat.js` against the V1.2 backend. The V1.1 frontend's SSE parser worked, but its `done` event handler logged to console only — and the console logs were scrolling off-screen behind dev tools panel switching.
+2. **V1.1 frontend had no visible-error fallback.** If a stream completed with zero token events rendered, the empty assistant bubble stayed empty. Silent failure, no diagnostic.
+
+What confused the diagnosis: the Network tab showed status 200 with 641-680 bytes returned per request, EventStream tab showed correct token events flowing from the backend, and `kb_hits` was present in the done event. The backend was working perfectly. The only path that surfaced the bug was a hard-refresh (Ctrl+Shift+R) of the chat page, which forced Netlify to serve the new V1.2 frontend.
+
+**Fix shipped in V1.2 frontend:**
+- Defensive parser logs every event with name + data
+- Every error path now surfaces visibly in the chat (no more silent empty bubbles)
+- Pre-stream sanity check: if stream ends with zero tokens and no error event, surfaces a diagnostic message in the bubble itself
+- Version label bumped to V1.2 in `index.html` (cosmetic, also acts as visual confirmation that hard-refresh worked)
+
+**Lesson promoted to D2 master prompt v1.4 as Standing Rule 2:** after every frontend deploy, the test protocol must include a hard-refresh (Ctrl+Shift+R) before running smoke tests. Browser cache + CDN cache + Netlify edge cache stack together — auto-deploy success on Netlify dashboard does NOT guarantee the browser is running the new code.
+
+**Time cost:** ~25 minutes diagnosis. Recovery itself was ~5 minutes (write defensive frontend, push, hard-refresh, retest). Same shape as Session 18's Standing Rule 1 surfacing — discipline failure (assumed deployment = browser running new code) caused diagnostic time.
+
+**Pattern 22 candidate status:** Standing Rule 1 (verify prior version exports before extending) was Session 18's lesson. Standing Rule 2 (hard-refresh after frontend deploy) is Session 19's lesson. Both surface the same underlying class — *unstated assumptions about state* — Standing Rule 1 about code state, Standing Rule 2 about runtime state. Worth flagging to D1 whether these are siblings of one Pattern 22 ("Verify state before testing") or two independent standing rules. Currently both encoded as separate rules in D2 master prompt; methodology doc promotion still gated by Session 16's 2+ deployment proof rule.
+
+**Smoke test final result (post-fix):** All 7 prompts passed. V1.2 shipped, tagged `v1.2`, external tester gate now open.
+
+---
 ---
 

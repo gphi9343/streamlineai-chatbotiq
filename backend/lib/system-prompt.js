@@ -1,33 +1,46 @@
 // backend/lib/system-prompt.js
 //
-// V1.3.1 — calibration patch. Single-sentence reinforcement of the anti-hybrid
-// rule: makes refusal a turn-level commitment, not a sentence-level one.
+// V1.3.2 — case-3 scope tightening. Replaces V1.3.1's permissive case-3
+// wording ("well-defined factual answer") with concrete scope ("terminology,
+// definitions, or concepts"). Surgical fix — same shape as V1.3.1, no other
+// changes.
 //
-// V1.3 baseline preserved otherwise: anti-hybrid + case-3 permission rules,
-// voice profile rendering across 6 fields, RAG-style context block separate.
+// Surfaced by V1.3.1 smoke retest: "Tell me about late scratchings" was
+// answered fully from training data with NO INSUFFICIENT DATA flag at all.
+// V1.3.1's turn-level refusal rule was technically correct ("entire turn
+// is a refusal"), but the case-3 permission was so broad ("well-defined
+// factual answer") that the model never invoked INSUFFICIENT DATA in the
+// first place — case-3 swallowed any racing-procedure question into the
+// "answer directly" path.
+//
+// V1.3.2 narrows case-3 to definitional questions only: terminology
+// (e.g. "what does 'lame 1/5' mean"), single-concept definitions
+// (e.g. "what is a barrier draw"), and basic explanations of named concepts.
+// Procedure, current events, specific cases, operational details — all
+// excluded from case-3 by the new wording, so they correctly route to
+// INSUFFICIENT DATA when KB doesn't cover them.
+//
+// V1.3 / V1.3.1 baseline preserved otherwise: anti-hybrid rule, turn-level
+// refusal rule, voice profile rendering, RAG-style context block separate.
 //
 // Architecture (unchanged from V1.2):
 //
 //   CACHED BLOCK (stable across all turns of all sessions for this deployment):
 //     - Identity (deployment_name, domain)
 //     - KB rendering rules (REFERENCE vs VERBATIM behaviour)
-//     - INSUFFICIENT DATA rule (V1.3.1: turn-level refusal added)
+//     - INSUFFICIENT DATA rule (V1.3.2: case-3 scope tightened)
 //     - Hard guardrails
 //     - Voice profile (V1.4+ — six fields)
 //
 //   DYNAMIC CONTEXT BLOCK (varies per turn — sent as user-side context, NOT in system prompt):
 //     - Retrieved KB entries for this query
 //
-// V1.3.1 changes vs V1.3:
-//   - INSUFFICIENT DATA section: added one sentence between the existing
-//     anti-hybrid rule and the case-3 permission rule. The new sentence makes
-//     turn-level refusal explicit — once INSUFFICIENT DATA fires, no
-//     explanatory content from general knowledge is permitted in the same
-//     turn, even if the topic seems well-defined under case-3.
-//   - Surfaced by V1.3 Test 9 ("Tell me about late scratchings") where the
-//     bot said INSUFFICIENT DATA then explained scratchings from general
-//     knowledge. Anti-hybrid rule was being overridden by case-3 permission
-//     when both rules applied ambiguously to one question.
+// Pattern 24 candidate (provisional, not promoted): "Permissive rules
+// require concrete scope." Vague scope on permissive rules ("well-defined
+// factual answer") gets read liberally by models. Concrete scope
+// ("terminology, definitions, or concepts") keeps them constrained.
+// Promotion deferred until same shape confirmed in second deployment per
+// Session 16's 2+ proof rule.
 
 /**
  * Build the cached system prompt from CONFIG.
@@ -71,7 +84,9 @@ export function buildSystemPrompt(config) {
 
   // ----- INSUFFICIENT DATA rule (Pattern 3) -----
   // V1.3: anti-hybrid + case-3 permission rules added.
-  // V1.3.1: turn-level refusal sentence added (between anti-hybrid and case-3).
+  // V1.3.1: turn-level refusal sentence added.
+  // V1.3.2: case-3 scope tightened from "well-defined factual answer" to
+  // "terminology, definitions, or concepts."
   sections.push(
     `INSUFFICIENT DATA RULE\n` +
     `\n` +
@@ -89,11 +104,16 @@ export function buildSystemPrompt(config) {
     `do not provide explanatory content from general knowledge in the same ` +
     `turn, even if the topic seems well-defined.\n` +
     `\n` +
-    `If the question is in-domain and has a well-defined factual answer that ` +
-    `doesn't depend on current data or stakes-bearing predictions, answer it ` +
-    `directly without invoking INSUFFICIENT DATA. Reserve INSUFFICIENT DATA ` +
-    `for questions where the KB has a genuine gap on something the user needs ` +
-    `grounded information for.\n` +
+    `Narrow case-3 exception — terminology and definitions only: if the ` +
+    `user's question is asking what a specific racing term, abbreviation, or ` +
+    `named concept means (e.g. "what does 'lame 1/5' mean", "what is a barrier ` +
+    `draw", "what does 'scratched' mean"), you may answer directly without ` +
+    `invoking INSUFFICIENT DATA. This exception applies ONLY to definitional ` +
+    `questions about named terms or concepts. Questions about procedures, ` +
+    `processes, current events, specific cases, operational details, or ` +
+    `"tell me about X" framings are NOT covered by this exception and must ` +
+    `route to INSUFFICIENT DATA when the KB doesn't have grounded content ` +
+    `for them.\n` +
     `\n` +
     `When voice profile is active, deliver the INSUFFICIENT DATA refusal in ` +
     `voice — see EXAMPLES OF VOICE for how the bot sounds when refusing.`

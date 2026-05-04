@@ -1,8 +1,9 @@
 // backend/server.js
 //
-// V1.3.1 — version label bump only. No functional changes.
-// Calibration patch in lib/system-prompt.js (single-sentence reinforcement
-// of anti-hybrid rule). Backend code is unchanged from V1.3.
+// V1.3.2 — version label bump only. No functional changes.
+// Calibration patch in lib/system-prompt.js (case-3 scope tightened from
+// "well-defined factual answer" to "terminology, definitions, or concepts").
+// Backend code is unchanged from V1.3 / V1.3.1.
 //
 // V1.3 baseline preserved: CORS allow-list shape, /admin route mount,
 // SSE event names, JSON payloads, chat flow, validation, persistence,
@@ -78,7 +79,7 @@ const SYSTEM_PROMPT = buildSystemPrompt(CONFIG);
 app.get('/health', (_req, res) => {
   res.json({
     status: 'ok',
-    version: '1.3.1',
+    version: '1.3.2',
     deployment: CONFIG.deployment_name,
     system_prompt_chars: SYSTEM_PROMPT.length,
     allowed_origins: ALLOWED_ORIGINS,
@@ -234,7 +235,7 @@ app.post('/chat', async (req, res) => {
 // Boot
 // ----------------------------------------------------------------
 app.listen(PORT, () => {
-  console.log(`[chatbotiq] V1.3.1 listening on :${PORT}`);
+  console.log(`[chatbotiq] V1.3.2 listening on :${PORT}`);
   console.log(`[chatbotiq] deployment: ${CONFIG.deployment_name}`);
   console.log(`[chatbotiq] system prompt: ${SYSTEM_PROMPT.length} chars`);
   console.log(`[chatbotiq] CORS origins: ${ALLOWED_ORIGINS.join(', ')}`);

@@ -534,3 +534,69 @@ The same three Test 9 prompts from V1.3 smoke testing, run again post-deploy. Pa
 - Pattern 23 candidate promotion timing — still 1/2 proofs
 
 ---
+### Session 5 — V1.3.2 PATCH (04 May 2026)
+
+**Built:** Case-3 scope tightening. Replaces V1.3.1's permissive "well-defined factual answer" wording with concrete scope: "terminology, definitions, or concepts." Backend version label V1.3.1 → V1.3.2.
+
+Two files changed:
+- `backend/lib/system-prompt.js` — V1.3.1's case-3 sentence replaced by a longer, scope-explicit version. New wording lists what case-3 covers ("what does X mean", "what is X", terminology and named-concept definitions) AND what it explicitly does NOT cover (procedures, processes, current events, specific cases, operational details, "tell me about X" framings).
+- `backend/server.js` — version label `1.3.1` → `1.3.2` in `/health` endpoint and boot log. No functional code changes.
+
+**Decided:**
+
+- **V1.3.1 was diagnosed as the wrong fix shape.** V1.3.1 added a turn-level refusal sentence ("if you say INSUFFICIENT DATA, the entire turn is a refusal"). The sentence itself was correct, but it didn't address the actual failure mode — which wasn't refusal-then-explain (the V1.3 drift), it was case-3 swallowing the question entirely so INSUFFICIENT DATA never fired in the first place.
+
+  V1.3 smoke test result: "INSUFFICIENT DATA — I don't have specifics. What I can tell you is..." (refusal + explanation, transparent imperfection)
+
+  V1.3.1 smoke test result: "Late scratchings are one of those annoying parts of racing..." (200 words of training-data prose, no INSUFFICIENT DATA flag at all, less transparent than V1.3)
+
+  V1.3.1 made things worse because the model resolved the rule conflict by skipping INSUFFICIENT DATA entirely — case-3's permissive scope ("well-defined factual answer") covered "late scratchings" too easily. The model reasoned its way into "this is well-defined, case-3 says answer directly" without ever invoking INSUFFICIENT DATA where the V1.3.1 turn-level rule could bite.
+
+- **V1.3.2 fix shape: tighten the permissive rule, not the restrictive rule.** Case-3 was too vague. Replaced with concrete scope: terminology and named-concept definitions only. Procedural questions, "tell me about X" framings, current events, specific cases — all explicitly excluded. The new wording lists examples of what's IN scope ("what does 'lame 1/5' mean", "what is a barrier draw") and what's OUT of scope (procedures, operational details).
+
+- **Pattern 24 candidate flagged: "Permissive rules require concrete scope."** Vague scope on permissive rules ("well-defined factual answer") gets read liberally by models. Concrete scope ("terminology, definitions, or concepts" with explicit exclusion examples) keeps models constrained. Provisional pattern. Promotion deferred until same shape confirmed in second deployment per Session 16's 2+ proof rule. Surfaced this session via V1.3 → V1.3.1 → V1.3.2 iteration. Logged in master file methodology section as candidate.
+
+- **Standing Rule 1 satisfied.** `git show v1.3.1:backend/lib/system-prompt.js` and `git show v1.3.1:backend/server.js` both read into context before generating V1.3.2 replacements. No memory-based assumptions on either file's content.
+
+- **Cache stability check.** V1.3.2 system prompt grows by ~280 chars vs V1.3.1's ~150 char addition (case-3 sentence is now longer due to explicit scope and exclusion examples). Cache hits will engage from turn 2 unchanged. Build Standard #1 unaffected.
+
+- **V1.5 calibration trigger remains live.** This is the second iteration of pre-launch calibration in one session. The V1.5 deferral language in master file ("if StreamlineAI deployment surfaces user-frustration pattern post-launch") is now explicitly being treated as "if testbed evidence surfaces the pattern, calibrate now." Worth flagging in master file update at session end: rephrase the V1.5 trigger to "if any deployment (testbed or paying-client) surfaces a calibration drift, V1.5 includes a calibration pass." Trigger condition is evidence-based, not phase-based.
+
+**Smoke retest (V1.3.2):**
+
+The same three Test 9 prompts. Critical: must run in a fresh private/incognito browser session to bypass cache (this was the V1.3.1 diagnostic finding — non-incognito test was running against stale state). Pass criteria:
+
+1. Test 1 ("What does 'lame 1/5' mean?") — direct in-voice answer, NO INSUFFICIENT DATA. Case-3 narrow scope still covers terminology questions.
+2. Test 2 ("Tell me about late scratchings") — INSUFFICIENT DATA in voice, NO follow-on explanation. "Tell me about" is procedural framing, explicitly excluded from V1.3.2's case-3 scope.
+3. Test 3 ("Who won the 2025 Melbourne Cup?") — INSUFFICIENT DATA in voice. Case 1 unchanged.
+
+[Test results filled in after deploy.]
+
+**Pattern check:**
+- Pattern 3 (Uncertainty Handling) — calibrating toward correct shape. V1.3 was transparent-but-hybrid (refuse + explain). V1.3.1 was opaque-but-pure (skip refusal entirely). V1.3.2 should be transparent-and-pure (refuse for procedural questions, answer terminology questions directly).
+- Pattern 5 (CONFIG vs CODE) — clean. Only system prompt content + version label changed.
+- Pattern 11 (Pre-Generation Scope Confirmation) — D1 selected option B (tighten case-3) over A (rollback to V1.3) and C (remove case-3 entirely). Reasoning captured at the time.
+
+**Build Standards check:**
+- #1 prompt caching — system prompt grew by ~280 chars from V1.3.1. Cache key changes. Cache machinery unchanged.
+- All other Build Standards unchanged from V1.3.1.
+
+**Cost / spend state:**
+- System prompt grows ~280 chars. Negligible cost impact.
+- `chatbotiq-dev` API key cap unchanged at $40/month.
+- Three V1.3.x deploys today (V1.3, V1.3.1, V1.3.2) plus smoke tests. Estimated cumulative spend <$1.
+
+**Files changed at V1.3.2:**
+- Modified: `backend/lib/system-prompt.js`, `backend/server.js`
+- Tag: `v1.3.2` to be applied at clean deploy commit
+
+**Next:** Session 6 begins V1.3.3 (admin form edit/delete capability) OR StreamlineAI deployment scaffolding, per D1 sequencing decision. V1.3.2 is calibration only, no capability change.
+
+**Open questions for D1 (carried forward):**
+- V1.3.3 sequencing: edit/delete admin endpoints
+- StreamlineAI deployment scaffolding sequencing
+- Pattern 23 candidate promotion timing — still 1/2 proofs
+- Pattern 24 candidate ("Permissive rules require concrete scope") — first proof surfaced this session, second proof needed for promotion
+- Master file V1.5 calibration trigger rephrasing — D1 task at session end
+
+---

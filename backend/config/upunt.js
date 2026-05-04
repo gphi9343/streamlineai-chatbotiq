@@ -6,10 +6,18 @@
 //   data sources, pass-through rules, hard guardrails.
 //   No engine logic lives here. No API integration code. No state management.
 //
-// V1.4 — Voice profile populated. Was placeholder at V1.0–V1.3.
+// V1.3 — Added admin_token_env_var. Per-deployment env var naming locked in
+// from the start (per Session 16 API key naming discipline). Engine reads
+// process.env[CONFIG.admin_token_env_var] — so the engine doesn't know the
+// deployment name, CONFIG points to it. Saves a refactor when the second
+// deployment lands.
+//
+// V1.4 baseline preserved: voice profile populated, hard_guardrails extended,
+// 13 example_messages.
 //
 // To deploy this engine for a different client: clone this file as
-// `config/<client>.js` and swap the values. Code never changes.
+// `config/<client>.js`, swap the values, and use a corresponding
+// admin_token_env_var name (e.g. ADMIN_TOKEN_STREAMLINEAI).
 
 export const upuntConfig = {
   // Identity
@@ -17,13 +25,17 @@ export const upuntConfig = {
   domain: 'Australian thoroughbred horse racing',
   client_slug: 'upunt',
 
-  // Brand (used by frontend at V1.0 — backend reads at V1.5+ for tone hints)
+  // Brand
   brand: {
     primary_colour: '#080808',
     accent_colour: '#C9A84C',
     text_colour: '#F5F0E8',
     font: 'Barlow Condensed, system-ui, sans-serif',
   },
+
+  // V1.3 — Admin auth: env var name to read for this deployment's token.
+  // Value of the env var is set in Railway, never in code or git.
+  admin_token_env_var: 'ADMIN_TOKEN_UPUNT',
 
   // Voice profile — populated V1.4
   // Format is the productised onboarding deliverable. Same shape for any
@@ -87,11 +99,6 @@ export const upuntConfig = {
       'Talk like a bookmaker or tout',
     ],
 
-    // Example messages anchor the model's pattern matching. The first ten
-    // demonstrate confident voice (KB content backing the response). The
-    // final three demonstrate INSUFFICIENT DATA voice — critical for V1.4
-    // because with 15 KB entries, the bot will refuse often, and these
-    // examples teach it to refuse in voice rather than as a generic LLM.
     example_messages: [
       // Confident voice — bot has KB content backing it
       "Stewards said the gelding was a touch off in the action afterward. Nothing dramatic — the stable reckons he'll be right after a couple of easy days.",
@@ -113,7 +120,6 @@ export const upuntConfig = {
   },
 
   // Hard guardrails (always on, applied independently of voice)
-  // Merged at V1.4: V1.2 originals + voice-specific guardrails from voice draft.
   hard_guardrails: [
     // V1.2 originals — universal
     'Do not provide gambling advice or specific betting recommendations.',
@@ -137,8 +143,7 @@ export const upuntConfig = {
     injection_channels: [],
   },
 
-  // Pass-through rules — V1.3 (renumbered from V1.4) extends with multi-source
-  // ingestion. V1.4 voice profile uses these for VERBATIM rendering.
+  // Pass-through rules — V1.3 extends with multi-source ingestion via admin form.
   pass_through_rules: {
     intel_verbatim: true,
     intel_attribution: 'Expert tip',

@@ -1,0 +1,338 @@
+/* admin-frontend/style.css
+ * V1.3 — ChatbotIQ Admin styling.
+ * Same brand as the public chat: black background, gold accent, warm white text.
+ */
+
+:root {
+  --bg: #080808;
+  --card-bg: #121212;
+  --accent: #C9A84C;
+  --accent-dim: #9A7A2E;
+  --text: #F5F0E8;
+  --text-muted: #888;
+  --error: #d44;
+  --success: #4a8;
+  --border: #2a2a2a;
+  --input-bg: #1a1a1a;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: 'Barlow', 'Barlow Condensed', system-ui, -apple-system, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.5;
+}
+
+header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 1.5rem 2rem;
+  border-bottom: 1px solid var(--border);
+}
+
+header h1 {
+  margin: 0;
+  font-weight: 700;
+  font-size: 1.6rem;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+header h1 .accent {
+  color: var(--accent);
+}
+
+header .version {
+  font-size: 0.8rem;
+  color: var(--accent-dim);
+  letter-spacing: 0.1em;
+}
+
+main {
+  max-width: 920px;
+  margin: 0 auto;
+  padding: 1.5rem 2rem 4rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1.5rem;
+}
+
+.card h2 {
+  margin: 0 0 1.25rem 0;
+  font-size: 1.15rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  color: var(--accent);
+}
+
+.form-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-bottom: 1rem;
+  position: relative;
+}
+
+label {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+label .hint {
+  color: var(--text-muted);
+  font-style: italic;
+  font-weight: 400;
+}
+
+label .required {
+  color: var(--accent);
+  font-style: italic;
+  font-weight: 400;
+}
+
+input[type="text"],
+input[type="password"],
+textarea {
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 0.6rem 0.75rem;
+  border-radius: 3px;
+  font-family: inherit;
+  font-size: 0.95rem;
+  resize: vertical;
+}
+
+input[type="text"]:focus,
+input[type="password"]:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+textarea {
+  font-family: 'Menlo', 'Consolas', monospace;
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+.char-count {
+  position: absolute;
+  bottom: -1.1rem;
+  right: 0;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.radio-row {
+  display: flex;
+  gap: 1.5rem;
+  padding: 0.4rem 0;
+}
+
+.radio-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  color: var(--text);
+  font-size: 0.95rem;
+}
+
+.radio-label input[type="radio"] {
+  accent-color: var(--accent);
+}
+
+.button-row {
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+
+button {
+  background: var(--accent);
+  color: var(--bg);
+  border: none;
+  padding: 0.65rem 1.2rem;
+  border-radius: 3px;
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  text-transform: uppercase;
+}
+
+button:hover {
+  background: #d8b75c;
+}
+
+button.primary {
+  background: var(--accent);
+  color: var(--bg);
+}
+
+button.secondary {
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+}
+
+button.secondary:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: transparent;
+}
+
+button.small {
+  padding: 0.35rem 0.7rem;
+  font-size: 0.75rem;
+}
+
+.status {
+  margin-top: 0.75rem;
+  padding: 0.6rem 0.8rem;
+  border-radius: 3px;
+  font-size: 0.85rem;
+  display: none;
+}
+
+.status:not(:empty) {
+  display: block;
+}
+
+.status-info {
+  background: rgba(201, 168, 76, 0.1);
+  color: var(--accent);
+  border-left: 3px solid var(--accent);
+}
+
+.status-success {
+  background: rgba(68, 168, 136, 0.1);
+  color: var(--success);
+  border-left: 3px solid var(--success);
+}
+
+.status-error {
+  background: rgba(212, 68, 68, 0.1);
+  color: var(--error);
+  border-left: 3px solid var(--error);
+}
+
+.muted {
+  color: var(--text-muted);
+  font-style: italic;
+  font-size: 0.9rem;
+}
+
+.error {
+  color: var(--error);
+  font-size: 0.9rem;
+}
+
+.entry-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.entry-list li {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 0.85rem 1rem;
+}
+
+.entry-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.4rem;
+}
+
+.badge {
+  display: inline-block;
+  padding: 0.15rem 0.5rem;
+  border-radius: 2px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.badge-reference {
+  background: rgba(154, 122, 46, 0.2);
+  color: var(--accent-dim);
+  border: 1px solid var(--accent-dim);
+}
+
+.badge-verbatim {
+  background: rgba(201, 168, 76, 0.15);
+  color: var(--accent);
+  border: 1px solid var(--accent);
+}
+
+.entry-date {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+.entry-question {
+  font-weight: 600;
+  font-size: 0.95rem;
+  margin-bottom: 0.3rem;
+}
+
+.entry-body {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  font-family: 'Menlo', 'Consolas', monospace;
+  line-height: 1.5;
+}
+
+.entry-attr {
+  color: var(--accent-dim);
+  font-size: 0.8rem;
+  font-style: italic;
+  margin-top: 0.4rem;
+}
+
+@media (max-width: 600px) {
+  header {
+    padding: 1rem;
+  }
+  main {
+    padding: 1rem;
+  }
+  .card {
+    padding: 1rem;
+  }
+  .button-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  button {
+    width: 100%;
+  }
+}

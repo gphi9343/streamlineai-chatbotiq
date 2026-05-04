@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ChatbotIQ Admin — KB Curation</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1>ChatbotIQ <span class="accent">Admin</span></h1>
+    <span class="version">V1.3</span>
+  </header>
+
+  <main>
+    <!-- Token entry / deployment picker -->
+    <section id="setup-section" class="card">
+      <h2>Setup</h2>
+
+      <div class="form-row">
+        <label for="backend-url">Backend URL</label>
+        <input type="text" id="backend-url" placeholder="https://streamlineai-chatbotiq-production.up.railway.app">
+      </div>
+
+      <div class="form-row">
+        <label for="deployment-slug">Deployment slug</label>
+        <input type="text" id="deployment-slug" placeholder="upunt">
+      </div>
+
+      <div class="form-row">
+        <label for="admin-token">Admin token</label>
+        <input type="password" id="admin-token" placeholder="ADMIN_TOKEN_xxx value from Railway">
+      </div>
+
+      <div class="form-row button-row">
+        <button id="save-credentials" type="button">Save credentials</button>
+        <button id="test-connection" type="button">Test connection</button>
+        <button id="clear-credentials" type="button" class="secondary">Clear all</button>
+      </div>
+
+      <div id="setup-status" class="status"></div>
+    </section>
+
+    <!-- KB entry form -->
+    <section id="entry-section" class="card">
+      <h2>Add KB Entry</h2>
+
+      <div class="form-row">
+        <label>Content type</label>
+        <div class="radio-row">
+          <label class="radio-label">
+            <input type="radio" name="content-type" value="REFERENCE" checked>
+            <span>REFERENCE <span class="hint">(paraphrasable)</span></span>
+          </label>
+          <label class="radio-label">
+            <input type="radio" name="content-type" value="VERBATIM">
+            <span>VERBATIM <span class="hint">(quote exactly)</span></span>
+          </label>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <label for="question">Question / topic</label>
+        <input type="text" id="question" placeholder="What is an LLM?" maxlength="500">
+        <span class="char-count" id="question-count">0 / 500</span>
+      </div>
+
+      <div class="form-row">
+        <label for="body">Body</label>
+        <textarea id="body" rows="8" placeholder="The answer or content..." maxlength="10000"></textarea>
+        <span class="char-count" id="body-count">0 / 10000</span>
+      </div>
+
+      <div class="form-row" id="attribution-row" style="display: none;">
+        <label for="attribution">Attribution <span class="required">*required for VERBATIM</span></label>
+        <input type="text" id="attribution" placeholder="e.g. Gareth Phillips, Founder" maxlength="200">
+        <span class="char-count" id="attribution-count">0 / 200</span>
+      </div>
+
+      <div class="form-row">
+        <label for="tags">Tags <span class="hint">(optional, comma-separated)</span></label>
+        <input type="text" id="tags" placeholder="pricing, faq, services">
+      </div>
+
+      <div class="form-row">
+        <label for="source">Source <span class="hint">(optional, defaults to admin-form-v1.3)</span></label>
+        <input type="text" id="source" placeholder="onboarding-questionnaire, manual, etc.">
+      </div>
+
+      <div class="form-row button-row">
+        <button id="submit-entry" type="button" class="primary">Submit and clear</button>
+      </div>
+
+      <div id="entry-status" class="status"></div>
+    </section>
+
+    <!-- Recent entries (read-back) -->
+    <section id="recent-section" class="card">
+      <h2>Recent entries <button id="refresh-recent" type="button" class="secondary small">Refresh</button></h2>
+      <div id="recent-list">
+        <p class="muted">Save credentials and test connection to see recent entries.</p>
+      </div>
+    </section>
+  </main>
+
+  <script src="admin.js"></script>
+</body>
+</html>

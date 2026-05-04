@@ -1,31 +1,31 @@
 // backend/lib/system-prompt.js
 //
-// V1.4 — Full voice profile rendering. Builds the system prompt for the
-// Anthropic API call from CONFIG fields.
+// V1.3 — Test 3 patch folded in (anti-hybrid + case-3 permission rule).
+// Two-sentence change to INSUFFICIENT DATA section. No other behaviour changes.
 //
-// Architecture (Option B — RAG-style, unchanged from V1.2):
+// V1.4 baseline preserved: voice profile rendering across 6 fields, voice
+// section last in cached block, RAG-style context block separate.
+//
+// Architecture (unchanged from V1.2):
 //
 //   CACHED BLOCK (stable across all turns of all sessions for this deployment):
 //     - Identity (deployment_name, domain)
 //     - KB rendering rules (REFERENCE vs VERBATIM behaviour)
-//     - INSUFFICIENT DATA rule
+//     - INSUFFICIENT DATA rule (V1.3: anti-hybrid + case-3 permission)
 //     - Hard guardrails
 //     - Voice profile (V1.4+ — six fields)
 //
 //   DYNAMIC CONTEXT BLOCK (varies per turn — sent as user-side context, NOT in system prompt):
 //     - Retrieved KB entries for this query
 //
-// V1.4 changes vs V1.2:
-//   - Voice profile rendering extended from 3 fields (tone, style,
-//     forbidden_words) to 6 fields (adds signature_phrases,
-//     forbidden_behaviours, example_messages).
-//   - Voice section moved to the END of the cached block. The model attends
-//     most strongly to information near the end of context. Voice is the
-//     hardest behavioural constraint to maintain across long responses, so
-//     it goes last.
-//   - example_messages are formatted as "EXAMPLES OF VOICE" rather than as
-//     few-shot completions. They demonstrate tone and rhythm without being
-//     interpreted as actual prior conversation.
+// V1.3 changes vs V1.4 baseline:
+//   - INSUFFICIENT DATA section: removed "Do not attempt to answer from
+//     general knowledge. Do not guess. Do not hedge." (subsumed by new
+//     anti-hybrid sentence, and contradicts the case-3 permission).
+//   - Added anti-hybrid sentence: forbids the refused-then-answered pattern
+//     surfaced in Test 3 of V1.4 smoke testing.
+//   - Added case-3 permission sentence: licenses direct answers for in-domain
+//     questions with well-defined low-stakes factual answers.
 
 /**
  * Build the cached system prompt from CONFIG.
@@ -68,6 +68,7 @@ export function buildSystemPrompt(config) {
   );
 
   // ----- INSUFFICIENT DATA rule (Pattern 3) -----
+  // V1.3: anti-hybrid + case-3 permission rules added.
   sections.push(
     `INSUFFICIENT DATA RULE\n` +
     `\n` +
@@ -76,8 +77,16 @@ export function buildSystemPrompt(config) {
     `\n` +
     `  "INSUFFICIENT DATA — [brief reason]."\n` +
     `\n` +
-    `Then offer to capture the question for the operator. Do not attempt to ` +
-    `answer from general knowledge. Do not guess. Do not hedge.\n` +
+    `Then offer to capture the question for the operator.\n` +
+    `\n` +
+    `When you say INSUFFICIENT DATA, do not then answer the question from ` +
+    `general knowledge in the same turn.\n` +
+    `\n` +
+    `If the question is in-domain and has a well-defined factual answer that ` +
+    `doesn't depend on current data or stakes-bearing predictions, answer it ` +
+    `directly without invoking INSUFFICIENT DATA. Reserve INSUFFICIENT DATA ` +
+    `for questions where the KB has a genuine gap on something the user needs ` +
+    `grounded information for.\n` +
     `\n` +
     `When voice profile is active, deliver the INSUFFICIENT DATA refusal in ` +
     `voice — see EXAMPLES OF VOICE for how the bot sounds when refusing.`
@@ -117,17 +126,14 @@ function renderVoiceProfile(vp) {
 
   const parts = [];
 
-  // Tone — array of descriptive words
   if (Array.isArray(vp.tone) && vp.tone.length > 0) {
     parts.push(`Tone: ${vp.tone.join(', ')}.`);
   }
 
-  // Style — paragraph describing voice rhythm and approach
   if (typeof vp.style === 'string' && vp.style.trim().length > 0) {
     parts.push(`Style: ${vp.style.trim()}`);
   }
 
-  // Signature phrases — flavour anchors
   if (Array.isArray(vp.signature_phrases) && vp.signature_phrases.length > 0) {
     const phrases = vp.signature_phrases.map(p => `  - "${p}"`).join('\n');
     parts.push(
@@ -135,21 +141,16 @@ function renderVoiceProfile(vp) {
     );
   }
 
-  // Forbidden words — never use
   if (Array.isArray(vp.forbidden_words) && vp.forbidden_words.length > 0) {
     const words = vp.forbidden_words.map(w => `"${w}"`).join(', ');
     parts.push(`Never use these words or phrases: ${words}.`);
   }
 
-  // Forbidden behaviours — never do
   if (Array.isArray(vp.forbidden_behaviours) && vp.forbidden_behaviours.length > 0) {
     const behaviours = vp.forbidden_behaviours.map(b => `  - ${b}`).join('\n');
     parts.push(`Never do any of the following:\n${behaviours}`);
   }
 
-  // Example messages — anchor the model's pattern matching.
-  // Framed as voice examples, not as prior conversation. The model
-  // pattern-matches the rhythm and tone, not the content.
   if (Array.isArray(vp.example_messages) && vp.example_messages.length > 0) {
     const examples = vp.example_messages
       .map((m, i) => `  ${i + 1}. "${m}"`)

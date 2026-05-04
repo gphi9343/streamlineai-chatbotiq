@@ -1,24 +1,19 @@
 // backend/server.js
 //
-// V1.2 changes from V1.1:
+// V1.3 changes vs V1.4 baseline:
 //
-// 1. KB retrieval per turn (lib/kb.js)
-//    Before calling Claude, retrieve top KB hits matching the user's message
-//    and inject them as a context block in the messages array.
+// 1. CORS allow-list shape
+//    V1.4 had ALLOWED_ORIGIN as a single string. V1.3 reads ALLOWED_ORIGINS
+//    (plural) as a comma-separated list, falls back to ALLOWED_ORIGIN if the
+//    new var isn't set. Backwards-compatible — old Railway env stays working
+//    until you switch to the new var.
 //
-// 2. System prompt assembled from CONFIG (lib/system-prompt.js)
-//    V1.1 referenced CONFIG.system_prompt — that field doesn't exist on
-//    upuntConfig, so the bot ran with no system prompt at all. V1.2 fixes
-//    this by building the system prompt from CONFIG fields (identity,
-//    guardrails, KB rules, INSUFFICIENT DATA rule).
+// 2. Admin route mounted
+//    /admin/* endpoints handled by routes/admin.js. Auth is per-route via
+//    auth middleware. Public /chat endpoint is unchanged.
 //
-// 3. Build Standard #1 actually delivers cache hits at V1.2+
-//    System prompt is now substantial (~600-1000 tokens). KB content lives
-//    in the dynamic message array, not the system prompt. Cache stays warm
-//    across turns of the same session.
-//
-// V1.1 contract preserved at the SSE layer — same event names, same JSON
-// payloads. Frontend doesn't change.
+// V1.4 baseline preserved everywhere else: SSE event names, JSON payloads,
+// chat flow, validation, persistence, stop_reason routing.
 
 import express from 'express';
 import cors from 'cors';
@@ -36,16 +31,41 @@ import {
 } from './lib/supabase.js';
 import { retrieveKb } from './lib/kb.js';
 import { buildSystemPrompt, renderKbContext } from './lib/system-prompt.js';
+import { adminRouter } from './routes/admin.js';
 
 import { upuntConfig } from './config/upunt.js';
 
 const app = express();
 app.use(express.json({ limit: '32kb' }));
 
-const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || 'http://localhost:3000';
+// ----------------------------------------------------------------
+// CORS — V1.3 allow-list shape
+// ----------------------------------------------------------------
+// Read ALLOWED_ORIGINS (plural, comma-separated) as the canonical var.
+// Fall back to ALLOWED_ORIGIN (singular, V1.4 var) for backwards-compat.
+// If neither is set, default to localhost for dev.
+function resolveAllowedOrigins() {
+  const plural = process.env.ALLOWED_ORIGINS;
+  if (plural) {
+    return plural.split(',').map(o => o.trim()).filter(Boolean);
+  }
+  const singular = process.env.ALLOWED_ORIGIN;
+  if (singular) {
+    return [singular];
+  }
+  return ['http://localhost:3000'];
+}
+
+const ALLOWED_ORIGINS = resolveAllowedOrigins();
+
 app.use(
   cors({
-    origin: ALLOWED_ORIGIN,
+    origin: (origin, callback) => {
+      // Allow same-origin / curl / health-check requests with no Origin header.
+      if (!origin) return callback(null, true);
+      if (ALLOWED_ORIGINS.includes(origin)) return callback(null, true);
+      callback(new Error(`CORS: origin ${origin} not in allow-list`));
+    },
     methods: ['GET', 'POST'],
   })
 );
@@ -65,12 +85,19 @@ const SYSTEM_PROMPT = buildSystemPrompt(CONFIG);
 app.get('/health', (_req, res) => {
   res.json({
     status: 'ok',
-    version: '1.4',
+    version: '1.3',
     deployment: CONFIG.deployment_name,
     system_prompt_chars: SYSTEM_PROMPT.length,
+    allowed_origins: ALLOWED_ORIGINS,
     timestamp: new Date().toISOString(),
   });
 });
+
+
+// ----------------------------------------------------------------
+// Admin routes (V1.3) — mount under /admin
+// ----------------------------------------------------------------
+app.use('/admin', adminRouter);
 
 
 // ----------------------------------------------------------------
@@ -214,8 +241,8 @@ app.post('/chat', async (req, res) => {
 // Boot
 // ----------------------------------------------------------------
 app.listen(PORT, () => {
-  console.log(`[chatbotiq] V1.4 listening on :${PORT}`);
+  console.log(`[chatbotiq] V1.3 listening on :${PORT}`);
   console.log(`[chatbotiq] deployment: ${CONFIG.deployment_name}`);
   console.log(`[chatbotiq] system prompt: ${SYSTEM_PROMPT.length} chars`);
-  console.log(`[chatbotiq] CORS origin: ${ALLOWED_ORIGIN}`);
+  console.log(`[chatbotiq] CORS origins: ${ALLOWED_ORIGINS.join(', ')}`);
 });

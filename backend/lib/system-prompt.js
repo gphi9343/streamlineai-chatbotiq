@@ -1,31 +1,33 @@
 // backend/lib/system-prompt.js
 //
-// V1.3 — Test 3 patch folded in (anti-hybrid + case-3 permission rule).
-// Two-sentence change to INSUFFICIENT DATA section. No other behaviour changes.
+// V1.3.1 — calibration patch. Single-sentence reinforcement of the anti-hybrid
+// rule: makes refusal a turn-level commitment, not a sentence-level one.
 //
-// V1.4 baseline preserved: voice profile rendering across 6 fields, voice
-// section last in cached block, RAG-style context block separate.
+// V1.3 baseline preserved otherwise: anti-hybrid + case-3 permission rules,
+// voice profile rendering across 6 fields, RAG-style context block separate.
 //
 // Architecture (unchanged from V1.2):
 //
 //   CACHED BLOCK (stable across all turns of all sessions for this deployment):
 //     - Identity (deployment_name, domain)
 //     - KB rendering rules (REFERENCE vs VERBATIM behaviour)
-//     - INSUFFICIENT DATA rule (V1.3: anti-hybrid + case-3 permission)
+//     - INSUFFICIENT DATA rule (V1.3.1: turn-level refusal added)
 //     - Hard guardrails
 //     - Voice profile (V1.4+ — six fields)
 //
 //   DYNAMIC CONTEXT BLOCK (varies per turn — sent as user-side context, NOT in system prompt):
 //     - Retrieved KB entries for this query
 //
-// V1.3 changes vs V1.4 baseline:
-//   - INSUFFICIENT DATA section: removed "Do not attempt to answer from
-//     general knowledge. Do not guess. Do not hedge." (subsumed by new
-//     anti-hybrid sentence, and contradicts the case-3 permission).
-//   - Added anti-hybrid sentence: forbids the refused-then-answered pattern
-//     surfaced in Test 3 of V1.4 smoke testing.
-//   - Added case-3 permission sentence: licenses direct answers for in-domain
-//     questions with well-defined low-stakes factual answers.
+// V1.3.1 changes vs V1.3:
+//   - INSUFFICIENT DATA section: added one sentence between the existing
+//     anti-hybrid rule and the case-3 permission rule. The new sentence makes
+//     turn-level refusal explicit — once INSUFFICIENT DATA fires, no
+//     explanatory content from general knowledge is permitted in the same
+//     turn, even if the topic seems well-defined under case-3.
+//   - Surfaced by V1.3 Test 9 ("Tell me about late scratchings") where the
+//     bot said INSUFFICIENT DATA then explained scratchings from general
+//     knowledge. Anti-hybrid rule was being overridden by case-3 permission
+//     when both rules applied ambiguously to one question.
 
 /**
  * Build the cached system prompt from CONFIG.
@@ -69,6 +71,7 @@ export function buildSystemPrompt(config) {
 
   // ----- INSUFFICIENT DATA rule (Pattern 3) -----
   // V1.3: anti-hybrid + case-3 permission rules added.
+  // V1.3.1: turn-level refusal sentence added (between anti-hybrid and case-3).
   sections.push(
     `INSUFFICIENT DATA RULE\n` +
     `\n` +
@@ -81,6 +84,10 @@ export function buildSystemPrompt(config) {
     `\n` +
     `When you say INSUFFICIENT DATA, do not then answer the question from ` +
     `general knowledge in the same turn.\n` +
+    `\n` +
+    `If you say INSUFFICIENT DATA in a turn, the entire turn is a refusal — ` +
+    `do not provide explanatory content from general knowledge in the same ` +
+    `turn, even if the topic seems well-defined.\n` +
     `\n` +
     `If the question is in-domain and has a well-defined factual answer that ` +
     `doesn't depend on current data or stakes-bearing predictions, answer it ` +

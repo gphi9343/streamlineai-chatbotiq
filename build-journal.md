@@ -478,3 +478,59 @@ Pre-V1.3 admin (D1 side, post-build):
 - Pattern 23 candidate (Verify runtime state matches deployed state) status — second proof not yet surfaced this session. Still 1/2 per Session 16's promotion rule.
 
 ---
+### Session 5 — V1.3.1 PATCH (04 May 2026)
+
+**Built:** Single-sentence calibration patch to INSUFFICIENT DATA rule. Backend version label bumped V1.3 → V1.3.1.
+
+Two files changed:
+- `backend/lib/system-prompt.js` — one sentence added between V1.3's anti-hybrid rule and case-3 permission rule. New rule makes refusal a turn-level commitment, not a sentence-level one: "If you say INSUFFICIENT DATA in a turn, the entire turn is a refusal — do not provide explanatory content from general knowledge in the same turn, even if the topic seems well-defined."
+- `backend/server.js` — version label `1.3` → `1.3.1` in `/health` endpoint and boot log. No functional code changes.
+
+**Decided:**
+
+- **Patch ships as V1.3.1, not deferred to V1.5.** D1 path B over path A. V1.5's calibration trigger ("if StreamlineAI deployment surfaces user-asks-reasonable-in-domain-question → bot-says-INSUFFICIENT-DATA → user-frustration pattern post-launch, V1.5 includes calibration pass") was written when we hadn't yet seen the pattern. Test 9 of V1.3 smoke testing surfaced the pattern pre-launch — the trigger condition is met by testbed evidence, not just post-launch evidence. The calibration deferral was a "fix when we have evidence" rule, not a "fix only post-launch" rule. Pre-launch evidence still counts.
+
+- **Rule-precedence ambiguity diagnosed.** V1.3 had two rules that could collide on questions like "Tell me about late scratchings": (1) the anti-hybrid rule ("don't answer from general knowledge in the same turn") and (2) the case-3 permission rule ("if in-domain and well-defined, answer directly"). When both applied ambiguously, the model favoured the permissive rule (case-3) over the restrictive rule (anti-hybrid). The V1.3.1 fix reframes anti-hybrid as a turn-level commitment that takes precedence once INSUFFICIENT DATA fires. Case-3 only applies when INSUFFICIENT DATA was NOT warranted in the first place — they cannot collide on the same turn.
+
+- **Sentence placement: between anti-hybrid and case-3.** Ordering matters for model attention. The new sentence sits immediately after the original anti-hybrid line and before case-3 permission, reading as: rule → reinforcement → exception clause. Same ordering principle as the V1.4 voice profile placement at end of cached block: the most recent rule the model reads dominates ambiguous interpretation.
+
+- **Standing Rule 1 satisfied.** `git show v1.3:backend/lib/system-prompt.js` and `git show v1.3:backend/server.js` both read into context before generating replacements. No memory-based assumptions.
+
+- **Backend version label bump per Standing Rule 2 spirit.** Frontend version label discipline (Rule 2) extends to backend per Session 20 D1 decision. V1.3.1 backend will report version `1.3.1` in `/health`, distinguishing logs and diagnostic state from V1.3.
+
+**Smoke retest (V1.3.1):**
+
+The same three Test 9 prompts from V1.3 smoke testing, run again post-deploy. Pass criteria: Test 1 unchanged (case-3 still working), Test 2 now refuses cleanly (no follow-on explanation), Test 3 unchanged (Case 1 still working).
+
+[Test results filled in after deploy.]
+
+**Pattern check:**
+- Pattern 3 (Uncertainty Handling) — full integrity restored. Anti-hybrid rule now has unambiguous precedence over case-3 when INSUFFICIENT DATA fires. Case-3 permission preserved for questions that don't trigger INSUFFICIENT DATA in the first place.
+- Pattern 5 (CONFIG vs CODE) — clean. CONFIG-only patch (system prompt content). CODE only touched for the version label.
+- Pattern 11 (Pre-Generation Scope Confirmation) — used: scope statement + path A vs path B decision before code generation.
+- Pattern 15 (Build Journal Discipline) — entry being written as a V1.3.1 patch postscript to Session 5, per protocol-permitted shape (Postscripts to existing entries are permitted when end-of-session diagnosis surfaces lessons that belong with the entry).
+
+**Standing rules check:**
+- Rule 1 satisfied for both files.
+- Rule 2 spirit satisfied: backend version label bumped to match the prompt change. Frontend unchanged this patch (no frontend code changed) — public chat label still V1.2 (cosmetic V1.3+ bump remains a Session 6 task).
+
+**Build Standards check:**
+- #1 prompt caching — system prompt grew by ~150 chars (the new sentence). Cache hits still engage from turn 2; one additional turn 1 cache write to absorb the new content. Cache machinery unchanged.
+- All other Build Standards unchanged from V1.3.
+
+**Cost / spend state:**
+- System prompt grows ~150 chars. Negligible cost impact.
+- `chatbotiq-dev` API key cap unchanged at $40/month.
+
+**Files changed at V1.3.1:**
+- Modified: `backend/lib/system-prompt.js`, `backend/server.js`
+- Tag: `v1.3.1` to be applied at clean deploy commit
+
+**Next:** Session 6 begins V1.3.2 (admin form edit/delete capability) OR StreamlineAI deployment scaffolding, per D1 sequencing decision. V1.3.1 is a calibration patch within the V1.3 capability envelope, not a new capability — so the V1.3.1 ship doesn't change what comes next.
+
+**Open questions for D1 (carried forward from Session 5 V1.3):**
+- V1.3.2 (edit/delete admin endpoints) sequencing
+- StreamlineAI deployment scaffolding sequencing
+- Pattern 23 candidate promotion timing — still 1/2 proofs
+
+---

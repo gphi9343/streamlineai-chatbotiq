@@ -1,19 +1,12 @@
 // backend/server.js
 //
-// V1.3 changes vs V1.4 baseline:
+// V1.3.1 — version label bump only. No functional changes.
+// Calibration patch in lib/system-prompt.js (single-sentence reinforcement
+// of anti-hybrid rule). Backend code is unchanged from V1.3.
 //
-// 1. CORS allow-list shape
-//    V1.4 had ALLOWED_ORIGIN as a single string. V1.3 reads ALLOWED_ORIGINS
-//    (plural) as a comma-separated list, falls back to ALLOWED_ORIGIN if the
-//    new var isn't set. Backwards-compatible — old Railway env stays working
-//    until you switch to the new var.
-//
-// 2. Admin route mounted
-//    /admin/* endpoints handled by routes/admin.js. Auth is per-route via
-//    auth middleware. Public /chat endpoint is unchanged.
-//
-// V1.4 baseline preserved everywhere else: SSE event names, JSON payloads,
-// chat flow, validation, persistence, stop_reason routing.
+// V1.3 baseline preserved: CORS allow-list shape, /admin route mount,
+// SSE event names, JSON payloads, chat flow, validation, persistence,
+// stop_reason routing.
 
 import express from 'express';
 import cors from 'cors';
@@ -85,7 +78,7 @@ const SYSTEM_PROMPT = buildSystemPrompt(CONFIG);
 app.get('/health', (_req, res) => {
   res.json({
     status: 'ok',
-    version: '1.3',
+    version: '1.3.1',
     deployment: CONFIG.deployment_name,
     system_prompt_chars: SYSTEM_PROMPT.length,
     allowed_origins: ALLOWED_ORIGINS,
@@ -241,7 +234,7 @@ app.post('/chat', async (req, res) => {
 // Boot
 // ----------------------------------------------------------------
 app.listen(PORT, () => {
-  console.log(`[chatbotiq] V1.3 listening on :${PORT}`);
+  console.log(`[chatbotiq] V1.3.1 listening on :${PORT}`);
   console.log(`[chatbotiq] deployment: ${CONFIG.deployment_name}`);
   console.log(`[chatbotiq] system prompt: ${SYSTEM_PROMPT.length} chars`);
   console.log(`[chatbotiq] CORS origins: ${ALLOWED_ORIGINS.join(', ')}`);

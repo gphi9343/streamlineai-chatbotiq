@@ -1,13 +1,19 @@
 // backend/server.js
 //
-// V1.3.2 — version label bump only. No functional changes.
-// Calibration patch in lib/system-prompt.js (case-3 scope tightened from
-// "well-defined factual answer" to "terminology, definitions, or concepts").
-// Backend code is unchanged from V1.3 / V1.3.1.
+// V1.3.3 — version label bump only. No functional changes here.
+// All V1.3.3 work is in routes/admin.js (PATCH/DELETE endpoints) and
+// the admin frontend.
 //
-// V1.3 baseline preserved: CORS allow-list shape, /admin route mount,
+// V1.3.2 baseline preserved: CORS allow-list shape, /admin route mount,
 // SSE event names, JSON payloads, chat flow, validation, persistence,
 // stop_reason routing.
+//
+// Pattern 22 finding (logged in V1.3.3 build journal, deferred to V1.4):
+//   `const CONFIG = upuntConfig` and `const SYSTEM_PROMPT = buildSystemPrompt(CONFIG)`
+//   are evaluated once at module load. The /chat endpoint is therefore
+//   bound to a single deployment for the lifetime of the process.
+//   Multi-deployment chat dispatch is a chat-flow architecture change,
+//   not a CONFIG clone. Tagged for V1.4.
 
 import express from 'express';
 import cors from 'cors';
@@ -60,7 +66,7 @@ app.use(
       if (ALLOWED_ORIGINS.includes(origin)) return callback(null, true);
       callback(new Error(`CORS: origin ${origin} not in allow-list`));
     },
-    methods: ['GET', 'POST'],
+    methods: ['GET', 'POST', 'PATCH', 'DELETE'],
   })
 );
 
@@ -79,7 +85,7 @@ const SYSTEM_PROMPT = buildSystemPrompt(CONFIG);
 app.get('/health', (_req, res) => {
   res.json({
     status: 'ok',
-    version: '1.3.2',
+    version: '1.3.3',
     deployment: CONFIG.deployment_name,
     system_prompt_chars: SYSTEM_PROMPT.length,
     allowed_origins: ALLOWED_ORIGINS,
@@ -89,7 +95,7 @@ app.get('/health', (_req, res) => {
 
 
 // ----------------------------------------------------------------
-// Admin routes (V1.3) — mount under /admin
+// Admin routes (V1.3 base, V1.3.3 extends with PATCH/DELETE) — mount under /admin
 // ----------------------------------------------------------------
 app.use('/admin', adminRouter);
 
@@ -235,7 +241,7 @@ app.post('/chat', async (req, res) => {
 // Boot
 // ----------------------------------------------------------------
 app.listen(PORT, () => {
-  console.log(`[chatbotiq] V1.3.2 listening on :${PORT}`);
+  console.log(`[chatbotiq] V1.3.3 listening on :${PORT}`);
   console.log(`[chatbotiq] deployment: ${CONFIG.deployment_name}`);
   console.log(`[chatbotiq] system prompt: ${SYSTEM_PROMPT.length} chars`);
   console.log(`[chatbotiq] CORS origins: ${ALLOWED_ORIGINS.join(', ')}`);

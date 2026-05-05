@@ -1,16 +1,15 @@
 // admin-frontend/admin.js
 //
-// V1.3 — Admin frontend for ChatbotIQ KB curation.
+// V1.3.3 — Added inline edit + hard-delete affordances on recent entries.
+// Each <li> in #recent-list now carries Edit/Delete buttons. Edit expands
+// the <li> in place into a prefilled form panel (inline-expand UX, not
+// modal). Delete confirms and DELETEs.
 //
-// Single-page admin tool. Talks to the Railway backend's /admin/* endpoints.
-// Stores per-deployment tokens in localStorage as a map.
+// Event delegation on #recent-list — buttons attach via container click
+// listener so freshly-rendered list items work without per-render wiring.
 //
-// localStorage shape:
-//   chatbotiq_admin_backend_url: "https://...railway.app"
-//   chatbotiq_admin_active_slug: "upunt"
-//   chatbotiq_admin_tokens: { "upunt": "ADMIN_TOKEN_UPUNT_value", ... }
-//
-// Failure paths surface visibly per Build Standard #4. No silent errors.
+// V1.3 baseline preserved: setup section, entry form, Ctrl/Cmd+Enter
+// submit, localStorage token map, visible-failure status surface.
 
 const LS_BACKEND = 'chatbotiq_admin_backend_url';
 const LS_ACTIVE_SLUG = 'chatbotiq_admin_active_slug';
@@ -259,8 +258,13 @@ async function submitEntry() {
 }
 
 // ----------------------------------------------------------------
-// Recent entries
+// Recent entries — list, edit (inline-expand), delete (V1.3.3)
 // ----------------------------------------------------------------
+
+// In-memory map of last-fetched entries by id, so the edit panel can
+// prefill from already-loaded data without a re-fetch.
+let recentEntriesById = {};
+
 async function loadRecent() {
   const url = getBackendUrl();
   const slug = getActiveSlug();
@@ -281,11 +285,14 @@ async function loadRecent() {
     );
     const data = await res.json();
     if (!res.ok) {
-      list.innerHTML = `<p class="error">Failed (${res.status}): ${data.message || 'unknown'}</p>`;
+      list.innerHTML = `<p class="error">Failed (${res.status}): ${escapeHtml(data.message || 'unknown')}</p>`;
       return;
     }
 
     const entries = data.entries || [];
+    recentEntriesById = {};
+    entries.forEach(e => { recentEntriesById[e.id] = e; });
+
     if (entries.length === 0) {
       list.innerHTML = '<p class="muted">No entries yet for this deployment.</p>';
       return;
@@ -295,22 +302,280 @@ async function loadRecent() {
     const html = [
       `<p class="muted">Showing ${entries.length} of ${total} entries.</p>`,
       '<ul class="entry-list">',
-      ...entries.map(e => `
-        <li>
-          <div class="entry-meta">
-            <span class="badge badge-${e.content_type.toLowerCase()}">${e.content_type}</span>
-            <span class="entry-date">${new Date(e.created_at).toLocaleString()}</span>
-          </div>
-          <div class="entry-question">${escapeHtml(e.question)}</div>
-          <div class="entry-body">${escapeHtml((e.body || '').slice(0, 200))}${e.body && e.body.length > 200 ? '…' : ''}</div>
-          ${e.attribution ? `<div class="entry-attr">— ${escapeHtml(e.attribution)}</div>` : ''}
-        </li>
-      `),
+      ...entries.map(e => renderEntryLi(e)),
       '</ul>',
     ].join('');
     list.innerHTML = html;
   } catch (err) {
     list.innerHTML = `<p class="error">Network error: ${escapeHtml(err.message)}</p>`;
+  }
+}
+
+// Render a single <li> for an entry. Used at initial load and after
+// PATCH-success to replace just the one row.
+function renderEntryLi(e) {
+  const tagsDisplay = Array.isArray(e.tags) && e.tags.length > 0
+    ? `<div class="entry-tags">${e.tags.map(t => `<span class="tag">${escapeHtml(t)}</span>`).join('')}</div>`
+    : '';
+
+  return `
+    <li data-entry-id="${escapeHtml(e.id)}">
+      <div class="entry-meta">
+        <span class="badge badge-${e.content_type.toLowerCase()}">${e.content_type}</span>
+        <span class="entry-date">${new Date(e.created_at).toLocaleString()}</span>
+        <div class="entry-actions">
+          <button type="button" class="secondary small" data-action="edit">Edit</button>
+          <button type="button" class="secondary small danger" data-action="delete">Delete</button>
+        </div>
+      </div>
+      <div class="entry-question">${escapeHtml(e.question)}</div>
+      <div class="entry-body">${escapeHtml((e.body || '').slice(0, 200))}${e.body && e.body.length > 200 ? '…' : ''}</div>
+      ${e.attribution ? `<div class="entry-attr">— ${escapeHtml(e.attribution)}</div>` : ''}
+      ${tagsDisplay}
+      <div class="edit-panel" hidden></div>
+    </li>
+  `;
+}
+
+// Build the edit form for an entry. Returned as an HTML string injected
+// into the <li>'s .edit-panel container.
+function renderEditPanel(e) {
+  const isVerbatim = e.content_type === 'VERBATIM';
+  const tagsCsv = Array.isArray(e.tags) ? e.tags.join(', ') : '';
+
+  return `
+    <div class="edit-form">
+      <div class="form-row">
+        <label>Content type</label>
+        <div class="radio-row">
+          <label class="radio-label">
+            <input type="radio" name="edit-content-type-${escapeHtml(e.id)}" value="REFERENCE" ${!isVerbatim ? 'checked' : ''}>
+            <span>REFERENCE</span>
+          </label>
+          <label class="radio-label">
+            <input type="radio" name="edit-content-type-${escapeHtml(e.id)}" value="VERBATIM" ${isVerbatim ? 'checked' : ''}>
+            <span>VERBATIM</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <label>Question</label>
+        <input type="text" class="edit-question" maxlength="500" value="${escapeHtml(e.question || '')}">
+      </div>
+
+      <div class="form-row">
+        <label>Body</label>
+        <textarea class="edit-body" rows="6" maxlength="10000">${escapeHtml(e.body || '')}</textarea>
+      </div>
+
+      <div class="form-row edit-attribution-row" ${isVerbatim ? '' : 'style="display:none;"'}>
+        <label>Attribution <span class="required">*required for VERBATIM</span></label>
+        <input type="text" class="edit-attribution" maxlength="200" value="${escapeHtml(e.attribution || '')}">
+      </div>
+
+      <div class="form-row">
+        <label>Tags <span class="hint">(comma-separated)</span></label>
+        <input type="text" class="edit-tags" value="${escapeHtml(tagsCsv)}">
+      </div>
+
+      <div class="form-row button-row">
+        <button type="button" class="primary" data-action="save">Save changes</button>
+        <button type="button" class="secondary" data-action="cancel">Cancel</button>
+      </div>
+
+      <div class="status edit-status"></div>
+    </div>
+  `;
+}
+
+function findLi(el) {
+  while (el && el !== document) {
+    if (el.tagName === 'LI' && el.dataset.entryId) return el;
+    el = el.parentNode;
+  }
+  return null;
+}
+
+function openEditPanel(li) {
+  const id = li.dataset.entryId;
+  const entry = recentEntriesById[id];
+  if (!entry) return;
+
+  const panel = li.querySelector('.edit-panel');
+  panel.innerHTML = renderEditPanel(entry);
+  panel.hidden = false;
+  li.classList.add('expanded');
+
+  // Wire content-type radio toggle for the attribution row
+  const radios = panel.querySelectorAll(`input[name="edit-content-type-${id}"]`);
+  const attrRow = panel.querySelector('.edit-attribution-row');
+  radios.forEach(r => {
+    r.addEventListener('change', () => {
+      attrRow.style.display = r.value === 'VERBATIM' && r.checked ? 'flex' : 'none';
+    });
+  });
+}
+
+function closeEditPanel(li) {
+  const panel = li.querySelector('.edit-panel');
+  panel.innerHTML = '';
+  panel.hidden = true;
+  li.classList.remove('expanded');
+}
+
+async function saveEdit(li) {
+  const id = li.dataset.entryId;
+  const url = getBackendUrl();
+  const slug = getActiveSlug();
+  const token = getActiveToken();
+  const panel = li.querySelector('.edit-panel');
+  const statusEl = panel.querySelector('.edit-status');
+
+  if (!url || !slug || !token) {
+    statusEl.className = 'status edit-status status-error';
+    statusEl.textContent = 'Save credentials first.';
+    return;
+  }
+
+  const ctRadios = panel.querySelectorAll(`input[name="edit-content-type-${id}"]`);
+  let content_type = 'REFERENCE';
+  ctRadios.forEach(r => { if (r.checked) content_type = r.value; });
+
+  const question = panel.querySelector('.edit-question').value.trim();
+  const body = panel.querySelector('.edit-body').value.trim();
+  const attribution = panel.querySelector('.edit-attribution').value.trim();
+  const tagsRaw = panel.querySelector('.edit-tags').value.trim();
+  const tags = tagsRaw
+    ? tagsRaw.split(',').map(t => t.trim()).filter(Boolean)
+    : [];
+
+  // Client-side guards mirror server validation — server is authoritative.
+  if (!question) {
+    statusEl.className = 'status edit-status status-error';
+    statusEl.textContent = 'Question is required.';
+    return;
+  }
+  if (!body) {
+    statusEl.className = 'status edit-status status-error';
+    statusEl.textContent = 'Body is required.';
+    return;
+  }
+  if (content_type === 'VERBATIM' && !attribution) {
+    statusEl.className = 'status edit-status status-error';
+    statusEl.textContent = 'VERBATIM entries require an attribution.';
+    return;
+  }
+
+  const payload = {
+    deployment_slug: slug,
+    content_type,
+    question,
+    body,
+    tags,
+  };
+  // Always send attribution: explicit empty for REFERENCE so server knows
+  // the field was considered. Server treats null per VERBATIM-only rule.
+  payload.attribution = content_type === 'VERBATIM' ? attribution : null;
+
+  statusEl.className = 'status edit-status status-info';
+  statusEl.textContent = 'Saving…';
+
+  try {
+    const res = await fetch(`${url}/admin/kb/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      statusEl.className = 'status edit-status status-error';
+      statusEl.textContent = `Failed (${res.status}): ${data.message || 'unknown'}`;
+      return;
+    }
+
+    // Replace the <li> in place with the freshly-returned entry.
+    const updated = data.entry;
+    if (updated) {
+      recentEntriesById[updated.id] = updated;
+      const wrapper = document.createElement('div');
+      wrapper.innerHTML = renderEntryLi(updated).trim();
+      const newLi = wrapper.firstChild;
+      li.replaceWith(newLi);
+    } else {
+      // No entry returned — refresh the whole list as a fallback.
+      loadRecent();
+    }
+  } catch (err) {
+    statusEl.className = 'status edit-status status-error';
+    statusEl.textContent = `Network error: ${err.message}`;
+  }
+}
+
+async function deleteEntry(li) {
+  const id = li.dataset.entryId;
+  const entry = recentEntriesById[id];
+  const questionPreview = entry ? entry.question : id;
+
+  if (!confirm(`Delete this entry?\n\n"${questionPreview}"\n\nThis cannot be undone.`)) {
+    return;
+  }
+
+  const url = getBackendUrl();
+  const slug = getActiveSlug();
+  const token = getActiveToken();
+
+  if (!url || !slug || !token) {
+    alert('Save credentials first.');
+    return;
+  }
+
+  try {
+    const res = await fetch(`${url}/admin/kb/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ deployment_slug: slug }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      alert(`Delete failed (${res.status}): ${data.message || 'unknown'}`);
+      return;
+    }
+    // Remove the <li> from the DOM.
+    delete recentEntriesById[id];
+    li.remove();
+  } catch (err) {
+    alert(`Network error: ${err.message}`);
+  }
+}
+
+// Single delegated click handler on #recent-list. Dispatches based on
+// the button's data-action attribute.
+function handleRecentListClick(ev) {
+  const btn = ev.target.closest('button[data-action]');
+  if (!btn) return;
+  const li = findLi(btn);
+  if (!li) return;
+  const action = btn.dataset.action;
+
+  if (action === 'edit') {
+    if (li.classList.contains('expanded')) {
+      closeEditPanel(li);
+    } else {
+      openEditPanel(li);
+    }
+  } else if (action === 'cancel') {
+    closeEditPanel(li);
+  } else if (action === 'save') {
+    saveEdit(li);
+  } else if (action === 'delete') {
+    deleteEntry(li);
   }
 }
 
@@ -336,12 +601,12 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('test-connection').addEventListener('click', testConnection);
   document.getElementById('clear-credentials').addEventListener('click', clearCredentials);
 
-  // Content type radio toggle
+  // Content type radio toggle (entry form)
   document.querySelectorAll('input[name="content-type"]').forEach(r => {
     r.addEventListener('change', toggleAttributionVisibility);
   });
 
-  // Char counts
+  // Char counts (entry form)
   document.getElementById('question').addEventListener('input', () =>
     updateCharCount('question', 'question-count', 500)
   );
@@ -363,6 +628,9 @@ document.addEventListener('DOMContentLoaded', () => {
       submitEntry();
     }
   });
+
+  // V1.3.3 — delegated click handler for edit/delete/save/cancel
+  document.getElementById('recent-list').addEventListener('click', handleRecentListClick);
 
   // If credentials already saved, auto-load recent
   if (getBackendUrl() && getActiveSlug() && getActiveToken()) {

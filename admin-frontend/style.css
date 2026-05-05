@@ -1,6 +1,10 @@
 /* admin-frontend/style.css
- * V1.3 — ChatbotIQ Admin styling.
- * Same brand as the public chat: black background, gold accent, warm white text.
+ * V1.3.3 — Added inline-expand edit panel + delete affordance styling.
+ * Expanded <li> gets a gold left border and subtle background shift so
+ * the active edit is unambiguous at a glance. Delete button uses error
+ * colour on hover only (not constantly red, which reads as alarm).
+ *
+ * V1.3 baseline preserved: brand vars, layout, badges, status surfaces.
  */
 
 :root {
@@ -207,6 +211,15 @@ button.small {
   font-size: 0.75rem;
 }
 
+/* V1.3.3 — danger variant for Delete button.
+ * Stays neutral by default (matches .secondary), shifts to error colour
+ * on hover. Avoids constant-red alarm state. */
+button.secondary.danger:hover {
+  border-color: var(--error);
+  color: var(--error);
+  background: transparent;
+}
+
 .status {
   margin-top: 0.75rem;
   padding: 0.6rem 0.8rem;
@@ -262,6 +275,17 @@ button.small {
   border: 1px solid var(--border);
   border-radius: 3px;
   padding: 0.85rem 1rem;
+  /* V1.3.3 — explicit left border so .expanded state can swap colour
+   * without shifting layout. */
+  border-left: 3px solid var(--border);
+  transition: border-left-color 120ms ease, background-color 120ms ease;
+}
+
+/* V1.3.3 — expanded edit state. Gold left border + subtle background
+ * shift makes the active edit identifiable at a glance. */
+.entry-list li.expanded {
+  border-left-color: var(--accent);
+  background: #0e0e0e;
 }
 
 .entry-meta {
@@ -269,6 +293,14 @@ button.small {
   align-items: center;
   gap: 0.75rem;
   margin-bottom: 0.4rem;
+  flex-wrap: wrap;
+}
+
+/* V1.3.3 — Edit/Delete buttons sit at the right of the meta row. */
+.entry-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 0.4rem;
 }
 
 .badge {
@@ -318,6 +350,50 @@ button.small {
   margin-top: 0.4rem;
 }
 
+/* V1.3.3 — tag chips on entry list. */
+.entry-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-top: 0.5rem;
+}
+
+.entry-tags .tag {
+  display: inline-block;
+  padding: 0.1rem 0.45rem;
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  letter-spacing: 0.02em;
+}
+
+/* V1.3.3 — inline edit panel. Hidden by default; revealed when the
+ * <li> gets .expanded. Sits inside the <li>, not floating. */
+.edit-panel {
+  margin-top: 0.85rem;
+  padding-top: 0.85rem;
+  border-top: 1px dashed var(--border);
+}
+
+.edit-panel[hidden] {
+  display: none;
+}
+
+.edit-form .form-row {
+  margin-bottom: 0.85rem;
+}
+
+.edit-form input[type="text"],
+.edit-form textarea {
+  width: 100%;
+}
+
+.status.edit-status:empty {
+  display: none;
+}
+
 @media (max-width: 600px) {
   header {
     padding: 1rem;
@@ -334,5 +410,19 @@ button.small {
   }
   button {
     width: 100%;
+  }
+
+  /* V1.3.3 — on narrow screens, action buttons drop below the meta line
+   * rather than crowding it. */
+  .entry-meta {
+    gap: 0.4rem;
+  }
+  .entry-actions {
+    margin-left: 0;
+    width: 100%;
+  }
+  .entry-actions button {
+    width: auto;
+    flex: 1;
   }
 }

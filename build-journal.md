@@ -600,3 +600,101 @@ The same three Test 9 prompts. Critical: must run in a fresh private/incognito b
 - Master file V1.5 calibration trigger rephrasing — D1 task at session end
 
 ---
+### Session 22 — 5 May 2026 — V1.3.3
+
+**Built:** Admin edit/delete capability. PATCH and DELETE endpoints on `/admin/kb/:id`, inline-expand UI on the recent-entries list, hard-delete with `confirm()` guard. Five files changed.
+
+- `backend/routes/admin.js` — PATCH and DELETE handlers added. Validators extracted to a single internal `validateKbFields()` helper used by both POST (validates inbound body) and PATCH (validates merged final state). Cross-tenant guard on PATCH and DELETE — the existing row's `deployment_slug` must match the auth-resolved deployment_slug, returning 403 `auth_failure` on mismatch. PATCH uses partial-field merge: only fields present in `req.body` override the existing row, all others preserve. Field-level diff before update — only changed fields hit Supabase, no-op edits short-circuit and return `changed: false`. DELETE is hard-delete, single-row by id, structured 404 on missing.
+- `backend/server.js` — version label `1.3.2` → `1.3.3` in `/health` endpoint and boot log. CORS `methods` array extended from `['GET', 'POST']` to `['GET', 'POST', 'PATCH', 'DELETE']` so browsers' preflight checks accept the new verbs. No other functional changes.
+- `admin-frontend/admin.js` — Edit/Delete buttons added to each `<li>` via `renderEntryLi()` template. Single delegated click listener on `#recent-list` dispatches on `data-action` attribute (edit, delete, save, cancel) — survives DOM replacement on PATCH-success without re-wiring. Inline-expand UX: `openEditPanel()` injects a prefilled form into the `<li>`'s `.edit-panel` container and toggles `.expanded` class. Save replaces just the affected `<li>` via `Element.replaceWith()` rather than reloading the full list. Delete uses `confirm()` with the question text echoed, then DELETE, then DOM removal. In-memory `recentEntriesById` map caches last-fetched entries so the edit panel prefills without a re-fetch.
+- `admin-frontend/index.html` — version label `V1.3` → `V1.3.3` in `<span class="version">`. Source-field hint updated to `defaults to admin-form-v1.3.3`. No other markup changes.
+- `admin-frontend/style.css` — Additive rules for V1.3.3 state. `.entry-list li.expanded` gets a gold left border (`--accent`) and subtle background shift (`#0e0e0e`) to mark the active edit unambiguously per D1's visual-clarity instruction. `.entry-actions` floats Edit/Delete buttons to the right of the meta row via `margin-left: auto`. `button.secondary.danger:hover` shifts to error colour only on hover, avoiding constant-red alarm. `.edit-panel` styling for the inline form, dashed-top-border separator from the read-only meta. Mobile breakpoint adjusts action buttons to drop below meta on narrow screens.
+
+Repo at `github.com/gphi9343/streamlineai-chatbotiq`. Tag `v1.3.3` to be applied at clean deploy commit.
+
+**Decided:**
+
+- **PATCH validation shape: partial-field merge over existing row, validated as merged final state.** Approved at scope. Caller can send a single field; server merges, validates, and persists only changed fields. Server is authoritative — frontend client-side guards mirror the validator but server runs the same checks regardless. Structured `validation_error` (HTTP 400) when merged state would violate schema (e.g., switching to VERBATIM without supplying attribution). This is the right ergonomic shape for the typo-correction use case the V1.3 deferral originally targeted.
+
+- **Validators extracted to a single helper.** V1.3 had POST validators inline as ~120 lines of copy-paste. Extending to PATCH would have doubled that surface. Extracted to `validateKbFields()` — same logic, called from both routes. Returns `{ ok, normalised }` on success, `{ ok, error }` on failure (where `error` is a structured-error object ready for `sendError`). Pattern 5 spirit: validation is engine logic, lives in one place. Refactor was scope-creep-with-payoff — net file shorter, future PATCH-shaped endpoints (e.g. `/admin/ingest`) can reuse the validator.
+
+- **Cross-tenant guard on PATCH and DELETE.** Both endpoints fetch the existing row first, compare its `deployment_slug` against the auth-resolved slug, and return 403 `auth_failure` on mismatch. Defensive even at single-deployment state — the moment a second deployment registers (V1.4), this guard prevents an UPunt admin token from editing a StreamlineAI entry by id. Cheap to add now, expensive to add reactively after a cross-tenant write incident.
+
+- **Hard-delete at V1.3.3, soft-delete deferred to V1.6.** SAQ-5 approved. Single-operator context (Gareth), accidental-deletion blast radius small, schema unchanged this session. V1.6 logging-dashboard work is the natural pairing for soft-delete (a `deleted_at` column gives the dashboard an audit-trail axis). Note: schema was not touched this session — no migration needed for V1.3.3.
+
+- **CORS preflight gotcha.** v1.3.2's `methods: ['GET', 'POST']` would have silently rejected PATCH/DELETE preflights from the browser. Spotted before testing — added to journal as a Pattern-22-adjacent reminder: "config-shape changes that look declarative (a string array) can gate a whole new capability." Cost: 0 minutes (caught at generation). Cost if missed: 15-30 minutes of "PATCH returns CORS error in browser, works fine in curl" diagnosis.
+
+- **Event delegation on `#recent-list` rather than per-render wiring.** When a save replaces the `<li>` via `replaceWith()`, per-element listeners on the old node die. Delegation on the parent container survives because the parent never gets replaced. Less code, fewer leaks, simpler to reason about — especially as this list will eventually carry pagination controls that re-render the whole `<ul>`.
+
+- **Inline-expand UI over modal overlay.** Approved at scope. Single-page-no-routing shape, no z-index/focus-trap concerns, easier hard-refresh diagnostics. The expanded state's gold left border + subtle background shift (D1's instruction) is CSS-only — no JS theming logic to break.
+
+- **Standing Rule 1 (Pattern 22) satisfied for all five files.** `git show v1.3.2:` reads on `backend/routes/admin.js`, `backend/server.js`, `backend/lib/auth.js`, `backend/config/upunt.js`, `backend/lib/system-prompt.js`, `admin-frontend/admin.js`, `admin-frontend/index.html`, `admin-frontend/style.css` all read into context before generation. Two material findings caught by the discipline:
+  1. **Voice profile `tone` shape mismatch.** Master file Session 22 voice profile had `tone` as a comma-separated string (`"calm, plain-spoken, practical, honest, warm"`). UPunt v1.3.2 has `tone` as an array. `lib/system-prompt.js` line 161 uses `Array.isArray(vp.tone)` — a string would have silently failed the check and the tone line would have been omitted from the system prompt with no error. Master file was a drafting error, corrected to array form for Session 22 onward (D1 to update master file post-session). Final tone: `["calm", "plain-spoken", "practical", "warm"]` — "honest" dropped per D1 voice review (tone words describe sound, not intent; honesty is enforced by hard_guardrails).
+  2. **Server.js single-deployment binding.** Detailed in next section — promoted from Standing-Rule-1 finding to V1.4 scope finding because of impact.
+
+**Architectural finding flagged for V1.4 scope (D1 master file action):**
+
+`server.js` v1.3.2 binds `const CONFIG = upuntConfig` and `const SYSTEM_PROMPT = buildSystemPrompt(CONFIG)` at module load. The `/chat` endpoint references `CONFIG.deployment_name`, `CONFIG.client_slug`, and the cached `SYSTEM_PROMPT` for every request. There is no per-request CONFIG resolution.
+
+What was briefed as Session 22 Part B "StreamlineAI deployment scaffolding" — clone CONFIG, register in `lib/auth.js`, create second Netlify site — does not work as scaffolding. Adding `streamlineai` to the registry makes admin endpoints work for both deployments (admin routes resolve CONFIG per-request via `requireAdminAuth`'s deployment_slug lookup). But the new public-chat Netlify site, hitting this `server.js`, would respond with UPunt's voice regardless of which origin is calling. StreamlineAI prospect chats to Punta the racing tragic.
+
+Multi-deployment chat dispatch requires:
+- `lib/auth.js` to expose `DEPLOYMENT_REGISTRY` (currently module-private) for chat-side lookup, OR a separate registry export
+- `server.js` to resolve CONFIG per-request — Origin header → slug map is the cleanest approach (UPunt frontend needs no change; Origin-based dispatch is additive)
+- Per-deployment system-prompt cache — a `Map<slug, string>` of pre-built prompts at boot, indexed by slug at request time
+- KB retrieval already takes `deploymentSlug` per call — no change needed there
+
+This is a chat-flow architecture change, not a CONFIG clone. D1 sequencing decision deferred Part B in full — single tag, single shippable change at V1.3.3.
+
+**D2 recommendation for next-session scoping:** the changeset for multi-deployment dispatch (server.js dispatch logic + lib/auth.js registry export shape + per-deployment prompt cache + new Netlify site + ALLOWED_ORIGINS append + ADMIN_TOKEN_STREAMLINEAI Railway env var + StreamlineAI voice profile drop-in) is large enough to warrant V1.4 rather than V1.3.4. D1 to confirm at next-session scope.
+
+**Pattern check:**
+
+- Pattern 1 (Reference vs Verbatim) — admin form's edit path preserves the same VERBATIM-requires-attribution rule. Switching content_type from REFERENCE to VERBATIM in the edit panel without supplying attribution returns structured `validation_error`. Same constraint as create.
+- Pattern 5 (CONFIG vs CODE) — clean. No CONFIG changes this session. New endpoints are pure engine logic. The cross-tenant guard reads CONFIG only via the auth-resolved `req.deploymentConfig` already attached by middleware.
+- Pattern 11 (Pre-Generation Scope Confirmation) — three rounds: (1) initial scope statement with five SAQs, (2) SAQ resolution, (3) Pattern 22 finding triggered re-scope from option-3 to option-A (Part A only). Each round produced explicit decision before code generation.
+- Pattern 14 (Stop-And-Ask) — invoked twice. (1) SAQ-2 PATCH validation shape — approved partial-field merge with structured-error contract on invalid merged state. (2) Pattern 22 server.js finding — irreversibility/data-shape category — approved Option A (defer Part B in full).
+- Pattern 15 (Build Journal Discipline) — entry being written now per protocol. Sync to D2 KB at session close per Standing-Rule additions to checklists.
+- Pattern 16 (Handback to D1) — none formally written. Pattern 22 finding is captured in this journal entry as an architectural finding for D1 to absorb into the master file's chat dispatch story for V1.4. If D1 wants this re-formatted as a structured handback, the substance is here.
+- Pattern 22 (Verify Prior Version's Actual Exports Before Extending) — satisfied across all eight files read. Two concrete saves: tone-shape mismatch (silent omission bug) and server.js dispatch finding (would have shipped a misrouted chat surface).
+
+**Standing rules check:**
+
+- Rule 1 (Pattern 22) — satisfied. See above.
+- Rule 2 (Pattern 23 candidate) — frontend changed this session (admin frontend). Test protocol below includes Ctrl+Shift+R on the admin Netlify site, version-label check showing `V1.3.3`, and `/health` check showing `version: "1.3.3"` before any smoke test runs.
+
+**Build Standards check:**
+
+- #1 prompt caching — system prompt unchanged. No impact on cache machinery.
+- #2 structured error handling — extended to PATCH and DELETE. Both use the `{status, type, message, suggestion, recoverable}` shape via `makeError`/`sendError`. New error type values used: `validation_error` (404 on missing entry, 400 on invalid id or merged state), `auth_failure` (403 on cross-tenant access).
+- #3 response validation — admin frontend validates merged-state inputs client-side as a UX guard, but server is authoritative. POST and PATCH both run `validateKbFields()` before any DB write.
+- #4 streaming — unchanged for chat. Admin frontend's edit/delete paths surface every fetch failure visibly: status panel inline in the edit panel for save failures, native `alert()` for delete failures (no inline status surface on the read-only `<li>` and adding one was scope creep). `confirm()` guards the destructive action.
+- #5 stop_reason router — unchanged.
+
+**Cost / spend state:**
+
+- No prompt token impact (system prompt unchanged).
+- Admin endpoints don't hit Anthropic. PATCH/DELETE are Supabase-only — negligible cost.
+- `chatbotiq-dev` API key cap unchanged at $40/month.
+- `chatbotiq-prod` API key still not created — trigger is first non-Gareth chat traffic, which is V1.4 scope (StreamlineAI public chat goes live).
+
+**Files changed at V1.3.3:**
+
+- Modified: `backend/routes/admin.js`, `backend/server.js`, `admin-frontend/admin.js`, `admin-frontend/index.html`, `admin-frontend/style.css`
+- New: none
+- Tag: `v1.3.3` to be applied at clean deploy commit
+
+**Broken:** No deploys yet at time of journal write. Test results filled in after deploy + smoke test.
+
+**Next:** Session 23 begins V1.4 — multi-deployment chat dispatch + StreamlineAI deployment scaffolding folded together. Scope brief for D1 to write at session open. D2 recommendation: V1.4 not V1.3.4 because the changeset spans engine architecture (per-request CONFIG resolution, registry export shape, per-deployment system-prompt cache) and adds a new public surface (StreamlineAI Netlify site). Major surface for a minor version bump. Files anticipated to change: `backend/lib/auth.js` (registry export), `backend/server.js` (dispatch logic), `backend/config/streamlineai.js` (new), plus Railway env var additions (`ADMIN_TOKEN_STREAMLINEAI`, append to `ALLOWED_ORIGINS`) and a new Netlify site setup.
+
+**Open questions for D1 (carried forward):**
+
+- V1.4 scope confirmation — multi-deployment dispatch + StreamlineAI scaffolding folded, version bump V1.4 (D2 rec) vs V1.3.4 (brief default).
+- Master file `voice_profile.tone` shape correction (string → array). Action: D1 edit master file Session 22 voice profile.
+- Methodology doc v1.2 batch update — still queued. Three changes pending (Pattern 1 rename, Pattern 22 promotion body, testbed-scaffolding corollary).
+- Pattern 23 candidate (verify runtime state) — still 1/2 proofs. Hard-refresh + `/health` version check ran clean Session 21; Session 22 will surface a second proof or not depending on whether deploy lands clean.
+- Pattern 24 candidate (permissive rules require concrete scope) — still 1/2 proofs. No second proof this session.
+- Cross-tenant token-scope tightening — V1.3 listing-route accepts any valid token to enumerate deployments. Acceptable at single-operator state, becomes a real concern when paying-client deployments register. Track for V1.6.
+
+---

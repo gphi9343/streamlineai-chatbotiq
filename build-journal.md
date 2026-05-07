@@ -698,3 +698,98 @@ This is a chat-flow architecture change, not a CONFIG clone. D1 sequencing decis
 - Cross-tenant token-scope tightening — V1.3 listing-route accepts any valid token to enumerate deployments. Acceptable at single-operator state, becomes a real concern when paying-client deployments register. Track for V1.6.
 
 ---
+
+### Session 23 — 7 May 2026 — V1.4
+
+**Built:** Multi-deployment chat dispatch + StreamlineAI deployment scaffolding folded into one V1.4 ship. ChatbotIQ engine now resolves CONFIG per-request via Origin header. UPunt and StreamlineAI run side-by-side on one Railway backend, two Netlify public-chat sites, one admin frontend, one shared codebase, one tag.
+
+Eight files changed (six backend/frontend code, plus README documentation, plus this journal entry):
+
+- `backend/lib/auth.js` — Added `streamlineai: streamlineaiConfig` to DEPLOYMENT_REGISTRY. New exported function `getDeploymentByOrigin(origin)` walks the registry and returns the first CONFIG whose `allowed_origins` array includes the given Origin. Returns `null` on miss; consumed by `server.js` chat dispatch which converts null → `config_error`. DEPLOYMENT_REGISTRY itself stays module-private — chat-side resolution goes through the new accessor, mirroring the existing `getDeploymentConfig(slug)` admin-side accessor. Two purpose-specific exports, one private registry.
+- `backend/config/upunt.js` — Added `allowed_origins: ['https://streamlineai-chatbotiq.netlify.app']` field. Doc comment block (~25 lines) explains the relationship with `ALLOWED_ORIGINS` env var: CORS gate vs deployment dispatch, both must agree, drift symptom is "CORS passed, dispatch failed with config_error". Same comment block in `streamlineai.js` for parity.
+- `backend/config/streamlineai.js` (new) — Full deployment CONFIG. Voice profile drop-in from master file (locked Session 22): tone array `['calm', 'plain-spoken', 'practical', 'warm']`, plain-English style paragraph, 10 signature phrases, 20 forbidden words, 17 forbidden behaviours, 13 example messages (10 confident + 3 INSUFFICIENT DATA), 16 hard guardrails. `admin_token_env_var: 'ADMIN_TOKEN_STREAMLINEAI'`. `allowed_origins: ['https://streamlineai-chat.netlify.app']`. `client_slug: 'streamlineai'`. Brand inherits StreamlineAI black/gold/warm-white tokens.
+- `backend/server.js` — Replaced module-load CONFIG binding (`const CONFIG = upuntConfig`, `const SYSTEM_PROMPT = buildSystemPrompt(CONFIG)`) with per-request resolution via `getDeploymentByOrigin(req.headers.origin)`. Per-deployment system-prompt cache implemented as `Map<client_slug, string>`, lazily built on first request per deployment via `getSystemPromptFor(config)` helper. Pre-build at boot for diagnostic visibility (boot log surfaces each deployment's prompt size before any traffic). Strict reject on Origin miss with `config_error` (Build Standard #2, non-recoverable) — silent fallback was the V1.4 finding that prompted this work. `/health` extended to expose registered-deployments list with per-deployment prompt sizes and allowed_origins for diagnostic visibility on the multi-deployment surface. `/chat` `done` event extended with `deployment` field (the resolved client_slug) for client-side traceability. Version label 1.3.3 → 1.4.
+- `streamlineai-chat-frontend/index.html` (new) — Sibling subdirectory to `frontend/`, `admin-frontend/`, `backend/` in the same repo. Title "StreamlineAI", header "StreamlineAI V1.4", neutral placeholder "Ask about our services, products, or how we work...". Same DOM shape as UPunt frontend so the SSE event handling logic is identical.
+- `streamlineai-chat-frontend/style.css` (new) — Same black/gold/warm-white palette as UPunt frontend (StreamlineAI brand happens to match UPunt's brand tokens — no fork needed yet, comment notes if they diverge). Adds `.msg-error` styling that was inherited implicitly in UPunt frontend's older CSS — explicit here for visible-failure-path discipline (Build Standard #4).
+- `streamlineai-chat-frontend/chat.js` (new) — Cloned SSE logic from `frontend/chat.js`. Logger prefix `[streamlineai]` instead of `[chatbotiq]` for log-stream separation. SESSION_KEY namespaced as `'streamlineai_chat_session_id'` (vs UPunt's `'chatbotiq_session_id'`) so a browser running both sites doesn't share session state. VERSION constant `'V1.4'`. BACKEND_URL identical (one Railway backend serves both deployments).
+- `README.md` — Paragraph documenting `ALLOWED_ORIGINS` env var (CORS gate) vs `CONFIG.allowed_origins` field (deployment dispatch). Same content as the doc comment in CONFIG files but in operator-facing prose; deploy walkthroughs reference this section.
+
+Repo at `github.com/gphi9343/streamlineai-chatbotiq`, public, tag `v1.4` to be applied at clean deploy commit.
+
+**Decided:**
+
+- **Origin-header dispatch over path-prefix or request-body slug.** D1 confirmed at scope. Origin-header is purely additive on the backend — UPunt frontend untouched, V1.0–V1.3.3 frontend rollback preserved. Path-prefix (`/chat/:slug`) and request-body slug both force a UPunt frontend change for zero capability gain. Origin is also the natural authority on "which site is this request from", so it's the most semantically correct dispatch key.
+
+- **Strict reject on unknown Origin (`config_error`).** D1 confirmed at scope. A request from an Origin not in any CONFIG.allowed_origins is either a misconfigured deployment or a probe; both should fail loudly. Silent fallback to a default deployment routes those to one deployment's voice — same class of failure that prompted splitting v1.3.3 from v1.4 in the first place. `config_error` is the correct error type per Build Standard #2 (non-recoverable misconfiguration, log loudly, fail fast, no retry).
+
+- **CONFIG-derived origin map (Pattern 5 enforced).** D1 confirmed at scope over D2's earlier consideration of a separate `ORIGIN_MAP` constant in `lib/auth.js`. Each deployment's CONFIG owns its own origins. The only place that knows about StreamlineAI's site URL is `streamlineai.js`. Adding a separate ORIGIN_MAP would have created a sync requirement (add deployment → remember to update two places) — same drift class as the `ALLOWED_ORIGINS` env var ↔ `CONFIG.allowed_origins` discipline this version already had to manage. One source of truth per concern.
+
+- **DEPLOYMENT_REGISTRY stays module-private; two purpose-specific accessors.** D1 confirmed at scope over the original brief's "expose the registry". The Pattern 22 read of v1.3.3 `lib/auth.js` surfaced that `getDeploymentConfig(slug)` already exists as an exported accessor for admin lookups. The chat-dispatch path got its own purpose-specific accessor (`getDeploymentByOrigin`) rather than exposing the raw registry. Cleaner API surface, encapsulation preserved, and future accessors (e.g. by-token, by-domain) can be added without breaking existing callers.
+
+- **Per-deployment system-prompt cache via `Map<slug, string>`, lazily built.** Build Standard #1 (prompt caching) preserved across deployments. Anthropic's ephemeral cache hits on identical system-prompt strings, so as long as each deployment's prompt is stable across the session, cache hits engage normally. Lazy build means cold deployments incur a one-time build cost on first request; pre-build at boot (`prebuildAllPrompts()`) shifts that cost to startup for diagnostic visibility (boot log surfaces prompt sizes per deployment).
+
+- **`done` event carries `deployment` field.** Added so the frontend log stream can confirm which deployment the backend routed to. Useful diagnostic — if a hard-refresh produces an unexpected voice, the `done` event tells you whether dispatch resolved to the expected slug. Backwards-compatible (extra field, existing clients ignore it).
+
+- **First non-test deployment registered. V1.6 cross-tenant token-scope concern now has a concrete second deployment in scope.** The `requireDeployment: false` listing route at `lib/auth.js` line 105-126 (which accepts any registered deployment's token to enumerate all deployments) is now exercised across two real deployments rather than one. Acceptable at single-operator state — only Gareth has tokens — but the V1.6 conversation about deployment-scoped admin auth tightening should open with this context: it's not a hypothetical concern any more, it's a concrete dual-deployment surface. Carried as a journal-flagged V1.6 item, not a V1.4 blocker.
+
+- **`ADMIN_TOKEN_STREAMLINEAI` generated this session.** Per scope decision (Standing Rule 2 spirit, Session 21 precedent). Token generated via `openssl rand -hex 32`, value passed to D1 in deploy walkthrough for setting in Railway env vars. Token never appears in any committed file. Session 21's rotation pattern still applies if the token is ever exposed during testing.
+
+- **Standing Rule 1 (Pattern 22) satisfied for all five files modified or referenced.** Read into context before generation:
+  1. `git show v1.3.3:backend/lib/auth.js` — found that `getDeploymentConfig(slug)` is already exported (the journal description's "currently module-private" was technically correct about the registry constant but missed the existing slug accessor). Resulted in the smaller, cleaner V1.4 design (no `DEPLOYMENT_REGISTRY` export, just one new function).
+  2. `git show v1.3.3:backend/server.js` — confirmed CORS allow-list shape, /admin route mount, SSE event names, all stage shapes for the chat handler. No surprise findings.
+  3. `git show v1.3.3:backend/config/upunt.js` — confirmed CONFIG shape, voice profile field structure, hard_guardrails location at top-level (not nested in voice_profile). No surprise findings.
+  4. `git show v1.3.3:backend/lib/system-prompt.js` (lines 1-60) — confirmed `buildSystemPrompt(config)` reads CONFIG via dot-notation (`config.deployment_name`, `config.domain`, `config.voice_profile.*`, `config.hard_guardrails`). Confirmed `streamlineai.js` only needs to match this contract — no per-deployment branching in the prompt builder.
+  5. `git show v1.3.3:frontend/index.html`, `frontend/chat.js`, `frontend/style.css` — clone source for `streamlineai-chat-frontend/`. Found UPunt frontend version label still showing V1.2 (cosmetic carryforward from V1.3.3 journal). NOT bumped this session — UPunt frontend cosmetic update is a separate task; V1.4 doesn't touch UPunt's frontend at all (Pattern 22 spirit: don't conflate scope).
+
+**Architectural note re-surfaced from Pattern 22 read:** the original V1.4 scope assumed `lib/auth.js` would need to export `DEPLOYMENT_REGISTRY` for chat-side consumption. That assumption was wrong. The chat dispatch needed an Origin → CONFIG accessor, which became a small new function alongside the existing slug accessor. Estimate accuracy data point: the Pattern 22 read shrank the auth.js change from "expose the registry" (10-15 min) to "add one entry + add one function" (still 10-15 min), but it shifted my mental allocation of session time. The new frontend site clone + per-deployment prompt cache + deploy walkthrough turned out to be the heavier buckets, not the engine plumbing. Future scope calibration: when scope splits into "engine work" + "new deployment surface", the surface clone is consistently the longer bucket. Engine plumbing reads bigger than it builds; surface clones read smaller than they build.
+
+**Broken:** No deploys yet at time of journal write. Test results filled in after deploy + smoke test on both surfaces.
+
+**Pattern check:**
+
+- Pattern 1 (Reference vs Verbatim Separation) — preserved. Both deployments use the same KB rendering rule. StreamlineAI VERBATIM entries (pricing, brand statements, refusal/redirect language) get the same exact-quote-with-attribution behaviour as UPunt's.
+- Pattern 5 (CONFIG vs CODE) — clean. All deployment-specific content (voice, brand, hard_guardrails, allowed_origins) lives in CONFIG. Engine code in `auth.js` and `server.js` reads CONFIG via the registry accessors only — never references a slug directly. Adding a third deployment is one CONFIG file, one registry entry, one Netlify site, one ALLOWED_ORIGINS append, one admin token env var. Zero engine code change.
+- Pattern 11 (Pre-Generation Scope Confirmation) — three rounds before generation: (1) initial scope statement with three SAQs (dispatch pattern, miss behaviour, token timing), (2) D1 flagged frontend repo structure + Pattern 22 read, (3) revised scope with Pattern 22 findings + dual `allowed_origins` doc comment in scope + V1.6 journal-note in scope. Each round produced explicit decision before code generation.
+- Pattern 14 (Stop-And-Ask) — invoked twice. (1) External services (new Netlify site) — approved. (2) Security (new admin token generation) — approved.
+- Pattern 15 (Build Journal Discipline) — entry being written now per protocol. Journal sync to D2 KB at session close per Standing Rule additions to checklists.
+- Pattern 16 (Handback to D1) — none formally written. All decisions resolved within scope.
+
+**Standing rules check:**
+
+- Rule 1 (verify prior version's exports before extending) — satisfied for all five files read. The `lib/auth.js` read in particular paid off — produced a smaller, cleaner V1.4 design than the original brief.
+- Rule 2 (hard-refresh after frontend deploy) — applies to BOTH Netlify sites this session. UPunt frontend unchanged at V1.4 but its version label still shows V1.2 (cosmetic carryforward, not a V1.4 task). StreamlineAI frontend brand new — hard-refresh required after first deploy to confirm the site is reachable and serving the V1.4 build, not a Netlify placeholder. Test protocol covers both.
+
+**Build Standards check:**
+
+- #1 prompt caching — preserved per-deployment via `Map<slug, string>` cache. Each deployment's system prompt is stable across the session, so Anthropic's ephemeral cache hits as it did at v1.3.3. UPunt's prompt unchanged from V1.4 baseline (~5906 chars per Session 4 V1.4 measurement). StreamlineAI prompt new — size measurement filled in after first deploy via /health endpoint.
+- #2 structured error handling — extended. New `config_error` path on Origin miss in `/chat`. Every existing error path preserved.
+- #3 response validation — unchanged.
+- #4 streaming — unchanged on UPunt surface. New StreamlineAI frontend inherits identical SSE parser with visible-failure-path discipline. `.msg-error` CSS class explicit in StreamlineAI stylesheet.
+- #5 stop_reason router — unchanged.
+- #6 pre-deployment checklist — to be passed before V1.4 ships.
+
+**Cost / spend state:**
+
+- No cost shape change at V1.4. Second deployment adds zero traffic until KB curation + website launch (StreamlineAI website not yet pointing at this chat).
+- `chatbotiq-dev` API key cap unchanged at $40/month.
+- `chatbotiq-prod` API key still not created — trigger remains first non-Gareth chat traffic. V1.4 ship doesn't trigger by itself; the StreamlineAI site goes live to public traffic only when KB curation completes + website integrates the chat.
+- Railway: still on Hobby trial. Calendar reminder for upgrade by 24 May 2026 stands.
+- Per-deployment system-prompt cache costs ~5-10 KB of process memory per registered deployment. Negligible at current scale; flag for V1.6 if registry exceeds ~50 deployments.
+
+**Files changed at V1.4:**
+
+- Modified: `backend/lib/auth.js`, `backend/config/upunt.js`, `backend/server.js`, `README.md`
+- New: `backend/config/streamlineai.js`, `streamlineai-chat-frontend/index.html`, `streamlineai-chat-frontend/style.css`, `streamlineai-chat-frontend/chat.js`
+- Tag: `v1.4` to be applied at clean deploy commit
+
+**Next:** Session 24 begins post-V1.4 work. Critical-path candidates: (a) StreamlineAI KB curation via admin form (~30 entries — this is D1 task, not D2 build, but D2 may be needed for any admin form friction surfaced during curation), (b) NewsletterIQ proxy migration (flagged for post-v1.4 D2 work, required before NewsletterIQ goes on website as paid product), (c) UPunt public-chat frontend version-label cosmetic update (carry-forward from V1.3.3, no engine work). D1 sequencing decision opens Session 24.
+
+**Open questions for D1 (carried forward):**
+
+- V1.6 deployment-scoped admin auth tightening — now has concrete second deployment in scope (this session's StreamlineAI registration). Track for V1.6 conversation context.
+- Methodology doc v1.2 batch update — still queued. Three changes pending (Pattern 1 rename, Pattern 22 promotion body, testbed-scaffolding corollary). Plus Pattern 23 candidate (verify runtime state) and Pattern 24 candidate (permissive rules require concrete scope) — both still 1/2 proofs.
+- Custom domain `chat.streamlineai.net.au` — deferred to post-KB-curation per Session 22 SAQ-4. Adding it requires appending to BOTH `streamlineai.js` `allowed_origins` AND Railway `ALLOWED_ORIGINS` env var.
+- UPunt frontend version label — still showing V1.2. Cosmetic update (V1.4 across two `<span class="version">` instances), no engine work, no test surface beyond hard-refresh + visual check.
+
+---
+

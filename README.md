@@ -125,3 +125,30 @@ Then point Railway/Netlify branch at `rollback-from-1.1`.
 - V1.5 — Voice profile applied.
 - V1.6 — Scheduled data ingestion.
 - V1.7 — Logging dashboard.
+---
+
+## Multi-deployment dispatch (V1.4+)
+
+The chat backend serves multiple deployments from one Railway instance. A
+request's deployment is resolved from the Origin header. Two configuration
+surfaces govern this and must agree:
+
+- `ALLOWED_ORIGINS` (Railway env var, comma-separated): the CORS allow-list.
+  Controls which origins are allowed to call the API at all. Rejection
+  happens in Express middleware before any route handler runs.
+- `CONFIG.allowed_origins` (per-deployment array, e.g. in `config/upunt.js`):
+  the deployment dispatch map. After CORS passes, the chat handler looks up
+  the Origin header against each registered deployment's `allowed_origins` to
+  determine which CONFIG to use. No match returns a structured `config_error`.
+
+If an origin is in `ALLOWED_ORIGINS` but not in any `CONFIG.allowed_origins`,
+the request passes CORS and fails dispatch with `config_error`. Drift symptom:
+"CORS passed, dispatch failed with config_error". Fix is adding the origin to
+the appropriate CONFIG (or removing it from ALLOWED_ORIGINS if it shouldn't
+reach the API at all).
+
+When adding a new deployment: (1) clone an existing `config/<slug>.js`,
+(2) register the slug in `lib/auth.js` `DEPLOYMENT_REGISTRY`, (3) set
+`ADMIN_TOKEN_<SLUG>` in Railway env vars, (4) append the public-chat origin
+to `ALLOWED_ORIGINS` env var, (5) confirm the same origin is in the new
+CONFIG's `allowed_origins` array.

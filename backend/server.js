@@ -1,19 +1,38 @@
 // backend/server.js
 //
-// V1.3.3 — version label bump only. No functional changes here.
-// All V1.3.3 work is in routes/admin.js (PATCH/DELETE endpoints) and
-// the admin frontend.
+// V1.4 — Multi-deployment chat dispatch.
 //
-// V1.3.2 baseline preserved: CORS allow-list shape, /admin route mount,
-// SSE event names, JSON payloads, chat flow, validation, persistence,
-// stop_reason routing.
+// V1.3.3 baseline preserved:
+//   - CORS allow-list shape (ALLOWED_ORIGINS plural canonical, ALLOWED_ORIGIN
+//     singular fallback, localhost default for dev)
+//   - /admin route mount, SSE event names and payload shapes
+//   - Chat flow stages (validation, session ensure, persist user message,
+//     fetch history, KB retrieve, stream Claude, validate, persist assistant,
+//     stop_reason route, done event)
+//   - Build Standards #1-#5 (caching, structured errors, validation,
+//     streaming, stop_reason router) all preserved per-deployment
 //
-// Pattern 22 finding (logged in V1.3.3 build journal, deferred to V1.4):
-//   `const CONFIG = upuntConfig` and `const SYSTEM_PROMPT = buildSystemPrompt(CONFIG)`
-//   are evaluated once at module load. The /chat endpoint is therefore
-//   bound to a single deployment for the lifetime of the process.
-//   Multi-deployment chat dispatch is a chat-flow architecture change,
-//   not a CONFIG clone. Tagged for V1.4.
+// V1.4 changes:
+//   - /chat endpoint resolves CONFIG per-request via getDeploymentByOrigin().
+//     The Origin header maps to a deployment via each CONFIG's allowed_origins.
+//     Unknown Origin → config_error (Build Standard #2, non-recoverable).
+//     Strict reject on miss — silent fallback would route to a default
+//     deployment's voice, which is the V1.4 finding that prompted this work.
+//   - System prompts are built once per deployment at first-request time
+//     and cached in a Map<slug, string>. Preserves Build Standard #1
+//     prompt-caching across all deployments — Anthropic's ephemeral cache
+//     hits on identical system prompt strings, so per-deployment stable
+//     strings hit normally.
+//   - /health endpoint version bumped 1.3.3 → 1.4.
+//   - /health endpoint exposes registered deployments list (slug + name +
+//     prompt_chars) for diagnostic visibility on the multi-deployment surface.
+//   - Boot log lines extended to print per-deployment system-prompt sizes.
+//
+// Architectural finding from Session 23 Pattern 22 read (resolved here):
+//   v1.3.3 bound `const CONFIG = upuntConfig` and `const SYSTEM_PROMPT =
+//   buildSystemPrompt(CONFIG)` at module load. /chat was therefore single-
+//   deployment for the lifetime of the process. V1.4 replaces both with
+//   per-request resolution + per-deployment cache.
 
 import express from 'express';
 import cors from 'cors';
@@ -33,17 +52,27 @@ import { retrieveKb } from './lib/kb.js';
 import { buildSystemPrompt, renderKbContext } from './lib/system-prompt.js';
 import { adminRouter } from './routes/admin.js';
 
-import { upuntConfig } from './config/upunt.js';
+import {
+  getDeploymentByOrigin,
+  listDeployments,
+  getDeploymentConfig,
+} from './lib/auth.js';
 
 const app = express();
 app.use(express.json({ limit: '32kb' }));
 
 // ----------------------------------------------------------------
-// CORS — V1.3 allow-list shape
+// CORS — V1.3 allow-list shape (unchanged at V1.4)
 // ----------------------------------------------------------------
 // Read ALLOWED_ORIGINS (plural, comma-separated) as the canonical var.
 // Fall back to ALLOWED_ORIGIN (singular, V1.4 var) for backwards-compat.
 // If neither is set, default to localhost for dev.
+//
+// Note: this is the CORS allow-list (which origins can call the API at all).
+// After CORS passes, /chat additionally resolves which DEPLOYMENT a given
+// Origin maps to via getDeploymentByOrigin() — see chat handler below.
+// Both lists must agree; an Origin in ALLOWED_ORIGINS but not in any
+// CONFIG.allowed_origins will pass CORS and fail dispatch with config_error.
 function resolveAllowedOrigins() {
   const plural = process.env.ALLOWED_ORIGINS;
   if (plural) {
@@ -70,32 +99,68 @@ app.use(
   })
 );
 
-const CONFIG = upuntConfig;
 const PORT = process.env.PORT || 3000;
 
-// Build the cached system prompt ONCE at boot. Stable across all turns
-// of all sessions for this deployment. Anthropic's ephemeral cache will
-// hit on this block as long as it's identical (>~1024 tokens required).
-const SYSTEM_PROMPT = buildSystemPrompt(CONFIG);
+// ----------------------------------------------------------------
+// V1.4 — Per-deployment system prompt cache.
+// ----------------------------------------------------------------
+// Map<client_slug, string>. Built lazily on first request per deployment.
+// Preserves Build Standard #1: each deployment's system prompt string is
+// stable across the session, so Anthropic's ephemeral cache hits as it did
+// at v1.3.3 — just with a per-deployment cached block instead of one shared.
+const SYSTEM_PROMPT_CACHE = new Map();
+
+function getSystemPromptFor(config) {
+  const slug = config.client_slug;
+  let prompt = SYSTEM_PROMPT_CACHE.get(slug);
+  if (!prompt) {
+    prompt = buildSystemPrompt(config);
+    SYSTEM_PROMPT_CACHE.set(slug, prompt);
+    console.log(
+      `[chatbotiq] built system prompt for ${slug}: ${prompt.length} chars`
+    );
+  }
+  return prompt;
+}
+
+// Pre-build prompts at boot for diagnostic visibility (logs the size of
+// each deployment's prompt before any request arrives). Lazy build above
+// would still work; this is just so the boot log surfaces deployment health.
+function prebuildAllPrompts() {
+  for (const { slug } of listDeployments()) {
+    const config = getDeploymentConfig(slug);
+    if (config) getSystemPromptFor(config);
+  }
+}
 
 
 // ----------------------------------------------------------------
 // Health
 // ----------------------------------------------------------------
 app.get('/health', (_req, res) => {
+  const deployments = listDeployments().map(({ slug, display_name }) => {
+    const config = getDeploymentConfig(slug);
+    const prompt = config ? SYSTEM_PROMPT_CACHE.get(slug) : null;
+    return {
+      slug,
+      display_name,
+      system_prompt_chars: prompt ? prompt.length : null,
+      allowed_origins: config ? config.allowed_origins || [] : [],
+    };
+  });
+
   res.json({
     status: 'ok',
-    version: '1.3.3',
-    deployment: CONFIG.deployment_name,
-    system_prompt_chars: SYSTEM_PROMPT.length,
-    allowed_origins: ALLOWED_ORIGINS,
+    version: '1.4',
+    deployments,
+    cors_allowed_origins: ALLOWED_ORIGINS,
     timestamp: new Date().toISOString(),
   });
 });
 
 
 // ----------------------------------------------------------------
-// Admin routes (V1.3 base, V1.3.3 extends with PATCH/DELETE) — mount under /admin
+// Admin routes (V1.3 base, V1.3.3 PATCH/DELETE) — mount under /admin
 // ----------------------------------------------------------------
 app.use('/admin', adminRouter);
 
@@ -105,6 +170,28 @@ app.use('/admin', adminRouter);
 // ----------------------------------------------------------------
 app.post('/chat', async (req, res) => {
   const { session_id, message } = req.body || {};
+
+  // --- V1.4: Resolve deployment from Origin header.
+  // Strict reject on miss — silent fallback would route to a default
+  // deployment's voice (the V1.4 finding that prompted this work).
+  const origin = req.headers.origin;
+  const CONFIG = getDeploymentByOrigin(origin);
+  if (!CONFIG) {
+    return sendError(
+      res,
+      400,
+      makeError({
+        type: 'config_error',
+        message: origin
+          ? `Origin ${origin} is not registered to any deployment`
+          : 'Missing Origin header — chat dispatch requires Origin',
+        suggestion:
+          'Verify that the calling site is in BOTH the ALLOWED_ORIGINS env var ' +
+          'AND in some CONFIG.allowed_origins array. They must agree.',
+        recoverable: false,
+      })
+    );
+  }
 
   // --- Input validation
   if (!isValidSessionId(session_id)) {
@@ -131,6 +218,9 @@ app.post('/chat', async (req, res) => {
       })
     );
   }
+
+  // --- Get the per-deployment cached system prompt
+  const SYSTEM_PROMPT = getSystemPromptFor(CONFIG);
 
   // --- Set up SSE response
   res.setHeader('Content-Type', 'text/event-stream');
@@ -165,7 +255,7 @@ app.post('/chat', async (req, res) => {
   }
   const history = historyResult.messages.slice(0, -1);
 
-  // --- V1.2: Retrieve KB hits for this query
+  // --- V1.2: Retrieve KB hits for this query (deployment-scoped)
   const kbResult = await retrieveKb({
     deploymentSlug: CONFIG.client_slug,
     query: message,
@@ -225,6 +315,7 @@ app.post('/chat', async (req, res) => {
 
   send('done', {
     stop_reason: result.stop_reason,
+    deployment: CONFIG.client_slug,
     kb_hits: hits.length,
     usage: {
       input_tokens: usage.input_tokens,
@@ -240,9 +331,14 @@ app.post('/chat', async (req, res) => {
 // ----------------------------------------------------------------
 // Boot
 // ----------------------------------------------------------------
+prebuildAllPrompts();
+
 app.listen(PORT, () => {
-  console.log(`[chatbotiq] V1.3.3 listening on :${PORT}`);
-  console.log(`[chatbotiq] deployment: ${CONFIG.deployment_name}`);
-  console.log(`[chatbotiq] system prompt: ${SYSTEM_PROMPT.length} chars`);
+  console.log(`[chatbotiq] V1.4 listening on :${PORT}`);
+  for (const { slug, display_name } of listDeployments()) {
+    const prompt = SYSTEM_PROMPT_CACHE.get(slug);
+    const chars = prompt ? prompt.length : 0;
+    console.log(`[chatbotiq] deployment: ${slug} (${display_name}) — system prompt: ${chars} chars`);
+  }
   console.log(`[chatbotiq] CORS origins: ${ALLOWED_ORIGINS.join(', ')}`);
 });

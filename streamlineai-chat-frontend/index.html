@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>StreamlineAI</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <h1>StreamlineAI <span class="version">V1.4</span></h1>
+    <button id="new-conversation" class="btn-secondary" type="button">
+      New conversation
+    </button>
+  </header>
+  <main>
+    <div id="messages" aria-live="polite"></div>
+    <form id="chat-form" autocomplete="off">
+      <input
+        id="input"
+        type="text"
+        placeholder="Ask about our services, products, or how we work..."
+        maxlength="4000"
+        required
+      />
+      <button id="send" type="submit">Send</button>
+    </form>
+  </main>
+  <script src="chat.js"></script>
+</body>
+</html>

@@ -1,29 +1,44 @@
 // backend/lib/auth.js
 //
-// V1.3 — Admin auth middleware (token-based).
+// V1.4 — Multi-deployment registry + chat dispatch resolver.
 //
-// Per-deployment env var token. The deployment's CONFIG points to the env
-// var name (e.g. ADMIN_TOKEN_UPUNT). The engine reads process.env[envVarName]
-// — never knows the deployment slug directly. Pattern 5 enforced.
+// V1.3 baseline preserved:
+//   - Per-deployment env var token. CONFIG points to the env var name
+//     (e.g. ADMIN_TOKEN_UPUNT). Engine reads process.env[envVarName] —
+//     never knows the deployment slug directly. Pattern 5 enforced.
+//   - Auth flow for admin routes:
+//       1. Authorization: Bearer <token>
+//       2. Body/query carries deployment_slug
+//       3. Engine looks up CONFIG by slug → reads CONFIG.admin_token_env_var
+//       4. Compares request token against process.env[envVarName]
+//       5. Pass on match, 401 on mismatch
+//   - requireDeployment: false listing route accepts any registered token.
+//     Acceptable at single-operator state. V1.6 deployment-scoped tightening
+//     tracked in build journal — V1.4 is the first version where this surface
+//     is exercised across two real deployments.
 //
-// Auth flow:
-//   1. Request arrives with Authorization: Bearer <token>
-//   2. Body must include deployment_slug to identify which CONFIG to load
-//   3. Engine looks up CONFIG by slug → reads CONFIG.admin_token_env_var
-//   4. Compares request token against process.env[CONFIG.admin_token_env_var]
-//   5. Pass on match, 401 on mismatch
-//
-// V1.3 ships with one deployment (UPunt). Multi-deployment selection
-// (V1.3.1+) reads from a deployment registry. For now: hardcoded import.
+// V1.4 additions:
+//   - DEPLOYMENT_REGISTRY now contains streamlineai (second deployment).
+//   - New exported function: getDeploymentByOrigin(origin). Walks the
+//     registry, returns the first CONFIG whose allowed_origins array
+//     includes the given Origin header value. Used by /chat dispatch in
+//     server.js. Returns null on miss; server.js converts that to a
+//     structured config_error.
+//   - DEPLOYMENT_REGISTRY remains module-private. Callers use the two
+//     exported accessors: getDeploymentConfig(slug) for slug-based admin
+//     lookups, getDeploymentByOrigin(origin) for chat dispatch.
 
 import { makeError, sendError } from './errors.js';
 import { upuntConfig } from '../config/upunt.js';
+import { streamlineaiConfig } from '../config/streamlineai.js';
 
 // Deployment registry — keyed by client_slug.
-// V1.3+ deployments register here. Engine reads CONFIG.admin_token_env_var
-// to look up the env var name per deployment.
+// Add new deployments here. Engine reads CONFIG.admin_token_env_var per
+// deployment for admin auth, and CONFIG.allowed_origins per deployment
+// for chat dispatch. Registry stays module-private.
 const DEPLOYMENT_REGISTRY = {
   upunt: upuntConfig,
+  streamlineai: streamlineaiConfig,
 };
 
 /**
@@ -36,6 +51,38 @@ const DEPLOYMENT_REGISTRY = {
 export function getDeploymentConfig(slug) {
   if (typeof slug !== 'string' || !slug.trim()) return null;
   return DEPLOYMENT_REGISTRY[slug] || null;
+}
+
+/**
+ * V1.4 — Resolve an Origin header value to its CONFIG object.
+ * Walks the registry; returns the first CONFIG whose allowed_origins
+ * array includes the given origin. Returns null on miss.
+ *
+ * Used by the /chat endpoint dispatch in server.js. The dispatch path
+ * treats null as a config_error (Build Standard #2, non-recoverable):
+ * a request from an unknown Origin is either a misconfigured deployment
+ * or a probe, and both should fail loudly rather than silently routing
+ * to a default.
+ *
+ * Note: a deployment's CONFIG.allowed_origins must agree with the
+ * ALLOWED_ORIGINS env var (CORS allow-list). They answer different
+ * questions (CORS = which origins can call the API at all; this lookup
+ * = which deployment a given allowed origin maps to) but both must
+ * include the same origin or the request fails. Drift symptom:
+ * "CORS passed, dispatch failed with config_error".
+ *
+ * @param {string | undefined} origin - value of req.headers.origin
+ * @returns {object | null}
+ */
+export function getDeploymentByOrigin(origin) {
+  if (typeof origin !== 'string' || !origin.trim()) return null;
+  for (const cfg of Object.values(DEPLOYMENT_REGISTRY)) {
+    const list = cfg.allowed_origins;
+    if (Array.isArray(list) && list.includes(origin)) {
+      return cfg;
+    }
+  }
+  return null;
 }
 
 /**
@@ -105,7 +152,9 @@ export function requireAdminAuth(options = {}) {
       // For deployment-listing routes, accept any token that matches ANY
       // registered deployment. This means: if you have a valid token for
       // any deployment, you can list deployments. Acceptable trade-off
-      // for V1.3 since the only operator is Gareth.
+      // for V1.4 since the only operator is Gareth. V1.6 tightens this
+      // to deployment-scoped enumeration once paying-client deployments
+      // register.
       const matched = Object.values(DEPLOYMENT_REGISTRY).some(cfg => {
         const expected = process.env[cfg.admin_token_env_var];
         return expected && expected === token;

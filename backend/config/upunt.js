@@ -12,6 +12,11 @@
 // deployment name, CONFIG points to it. Saves a refactor when the second
 // deployment lands.
 //
+// V1.4 — Added allowed_origins field. Used by chat dispatch in server.js
+// via getDeploymentByOrigin() in lib/auth.js. See doc comment on the field
+// itself for the full ALLOWED_ORIGINS env var vs CONFIG.allowed_origins
+// distinction.
+//
 // V1.4 baseline preserved: voice profile populated, hard_guardrails extended,
 // 13 example_messages.
 //
@@ -36,6 +41,33 @@ export const upuntConfig = {
   // V1.3 — Admin auth: env var name to read for this deployment's token.
   // Value of the env var is set in Railway, never in code or git.
   admin_token_env_var: 'ADMIN_TOKEN_UPUNT',
+
+  // V1.4 — Chat dispatch: which Origin header values map to this deployment.
+  //
+  // RELATIONSHIP WITH ALLOWED_ORIGINS ENV VAR:
+  // ALLOWED_ORIGINS (env var, set in Railway) is the CORS allow-list — it
+  // controls which origins are allowed to call the API at all. CORS rejection
+  // happens in Express middleware before any route handler runs.
+  //
+  // CONFIG.allowed_origins (this field) controls which deployment a given
+  // Origin maps to. After CORS passes, server.js looks up the Origin header
+  // against each registered deployment's allowed_origins to resolve which
+  // CONFIG to use for the chat. No match = config_error (Build Standard #2,
+  // non-recoverable).
+  //
+  // Both must agree. If an origin appears in ALLOWED_ORIGINS env var but not
+  // in any CONFIG's allowed_origins, the request passes CORS but fails
+  // dispatch with a config_error. Drift symptom during deploy: "CORS passed,
+  // dispatch failed with config_error" — fix is adding the origin to the
+  // appropriate CONFIG.allowed_origins array (or removing it from
+  // ALLOWED_ORIGINS env var if it shouldn't reach the API at all).
+  //
+  // For local development: include 'http://localhost:8080' (or whichever
+  // port your local frontend runs on) in BOTH this array AND the
+  // ALLOWED_ORIGINS env var.
+  allowed_origins: [
+    'https://streamlineai-chatbotiq.netlify.app',
+  ],
 
   // Voice profile — populated V1.4
   // Format is the productised onboarding deliverable. Same shape for any

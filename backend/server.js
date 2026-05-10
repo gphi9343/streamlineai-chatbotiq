@@ -1,8 +1,18 @@
 // backend/server.js
 //
-// V1.4 — Multi-deployment chat dispatch.
+// V1.4.1 — Patch increment. No engine-architecture changes.
 //
-// V1.3.3 baseline preserved:
+// The only code change vs V1.4 is the /health endpoint version string
+// ('1.4' → '1.4.1') and the boot log line. All chat dispatch, CORS,
+// per-deployment system prompt cache, admin route mount, SSE flow,
+// validation, and stop_reason routing are preserved unchanged.
+//
+// V1.4.1 patch scope (all in other files):
+//   - lib/system-prompt.js: Pattern 11 case-3 exclusion list extended +
+//     wording made domain-agnostic + VERBATIM precedence strengthened
+//   - routes/admin.js: two new diagnostic endpoints under /admin/debug/*
+//
+// V1.4 baseline preserved:
 //   - CORS allow-list shape (ALLOWED_ORIGINS plural canonical, ALLOWED_ORIGIN
 //     singular fallback, localhost default for dev)
 //   - /admin route mount, SSE event names and payload shapes
@@ -11,28 +21,12 @@
 //     stop_reason route, done event)
 //   - Build Standards #1-#5 (caching, structured errors, validation,
 //     streaming, stop_reason router) all preserved per-deployment
-//
-// V1.4 changes:
 //   - /chat endpoint resolves CONFIG per-request via getDeploymentByOrigin().
 //     The Origin header maps to a deployment via each CONFIG's allowed_origins.
 //     Unknown Origin → config_error (Build Standard #2, non-recoverable).
-//     Strict reject on miss — silent fallback would route to a default
-//     deployment's voice, which is the V1.4 finding that prompted this work.
-//   - System prompts are built once per deployment at first-request time
-//     and cached in a Map<slug, string>. Preserves Build Standard #1
-//     prompt-caching across all deployments — Anthropic's ephemeral cache
-//     hits on identical system prompt strings, so per-deployment stable
-//     strings hit normally.
-//   - /health endpoint version bumped 1.3.3 → 1.4.
-//   - /health endpoint exposes registered deployments list (slug + name +
-//     prompt_chars) for diagnostic visibility on the multi-deployment surface.
-//   - Boot log lines extended to print per-deployment system-prompt sizes.
-//
-// Architectural finding from Session 23 Pattern 22 read (resolved here):
-//   v1.3.3 bound `const CONFIG = upuntConfig` and `const SYSTEM_PROMPT =
-//   buildSystemPrompt(CONFIG)` at module load. /chat was therefore single-
-//   deployment for the lifetime of the process. V1.4 replaces both with
-//   per-request resolution + per-deployment cache.
+//   - System prompts built once per deployment at first-request time and
+//     cached in a Map<slug, string>. Preserves Build Standard #1 prompt-
+//     caching across all deployments.
 
 import express from 'express';
 import cors from 'cors';
@@ -62,7 +56,7 @@ const app = express();
 app.use(express.json({ limit: '32kb' }));
 
 // ----------------------------------------------------------------
-// CORS — V1.3 allow-list shape (unchanged at V1.4)
+// CORS — V1.3 allow-list shape (unchanged at V1.4 / V1.4.1)
 // ----------------------------------------------------------------
 // Read ALLOWED_ORIGINS (plural, comma-separated) as the canonical var.
 // Fall back to ALLOWED_ORIGIN (singular, V1.4 var) for backwards-compat.
@@ -151,7 +145,7 @@ app.get('/health', (_req, res) => {
 
   res.json({
     status: 'ok',
-    version: '1.4',
+    version: '1.4.1',
     deployments,
     cors_allowed_origins: ALLOWED_ORIGINS,
     timestamp: new Date().toISOString(),
@@ -160,7 +154,7 @@ app.get('/health', (_req, res) => {
 
 
 // ----------------------------------------------------------------
-// Admin routes (V1.3 base, V1.3.3 PATCH/DELETE) — mount under /admin
+// Admin routes (V1.3 base, V1.3.3 PATCH/DELETE, V1.4.1 /debug/*) — mount under /admin
 // ----------------------------------------------------------------
 app.use('/admin', adminRouter);
 
@@ -334,7 +328,7 @@ app.post('/chat', async (req, res) => {
 prebuildAllPrompts();
 
 app.listen(PORT, () => {
-  console.log(`[chatbotiq] V1.4 listening on :${PORT}`);
+  console.log(`[chatbotiq] V1.4.1 listening on :${PORT}`);
   for (const { slug, display_name } of listDeployments()) {
     const prompt = SYSTEM_PROMPT_CACHE.get(slug);
     const chars = prompt ? prompt.length : 0;

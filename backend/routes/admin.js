@@ -1,31 +1,54 @@
 // backend/routes/admin.js
 //
-// V1.3.3 — Added PATCH /admin/kb/:id and DELETE /admin/kb/:id.
-// Validators extracted to a single internal helper used by both POST and
-// PATCH. POST validates the full inbound body; PATCH merges the request
-// body over the existing row and validates the merged final state.
+// V1.4.1 — Added two diagnostic endpoints under /admin/debug for engine-
+// level inspection. Both follow the listing-route auth pattern
+// (requireAdminAuth({ requireDeployment: false })) — any registered admin
+// token grants access. Acceptable at single-operator state. V1.6 tightening
+// to slug-scoped enumeration is already tracked alongside the existing
+// /admin/deployments listing route — both routes will tighten together when
+// paying-client deployments register.
 //
-// V1.3 baseline preserved: GET /admin/deployments, POST /admin/kb,
-// GET /admin/kb. Auth shape unchanged. Structured error contract
-// unchanged. Supabase client unchanged.
+// New endpoints:
+//   GET /admin/debug/system-prompt/:slug
+//     Returns the rendered system prompt for a deployment. Useful for:
+//     - Verifying CONFIG-vs-CODE separation (no foreign content leaks in)
+//     - Confirming voice profile + hard guardrails are rendering correctly
+//     - Diagnosing why a deployment behaves differently than expected
+//
+//   GET /admin/debug/retrieval/:slug?query=...
+//     Returns what retrieveKb returns for a given query against a
+//     deployment's KB. Returns the actual hits in retrieval order, so the
+//     operator can see whether a missed VERBATIM entry was a retrieval miss
+//     (didn't surface) or a model behaviour issue (surfaced but ignored).
+//     Phase 2 prep for Session 24 Failure 2 diagnosis.
+//
+// Both endpoints are read-only. No state mutation, no Anthropic API calls,
+// no token cost beyond the request itself. Cheap to call repeatedly.
+//
+// V1.3.3 baseline preserved:
+//   - GET /admin/deployments (listing)
+//   - POST /admin/kb (create)
+//   - GET /admin/kb (list with pagination)
+//   - PATCH /admin/kb/:id (partial update with cross-tenant guard)
+//   - DELETE /admin/kb/:id (hard delete with cross-tenant guard)
+//   - validateKbFields() helper used by POST + PATCH
+//   - Auth shape unchanged
+//   - Structured error contract unchanged
+//   - Supabase client unchanged
 //
 // Deferred to V1.4+:
 //   - POST /admin/kb/bulk (CSV upload)
 //   - POST /admin/ingest (API webhook for VERBATIM from third parties)
-//
-// Endpoints:
-//   GET    /admin/deployments         — list registered deployments (for picker)
-//   POST   /admin/kb                  — create a KB entry (REFERENCE or VERBATIM)
-//   GET    /admin/kb                  — list KB entries for a deployment (read-back / pagination)
-//   PATCH  /admin/kb/:id              — partial update (V1.3.3)
-//   DELETE /admin/kb/:id              — hard delete (V1.3.3)
-//
-// All routes require Bearer token auth via lib/auth.js.
+//   - V1.6 deployment-scoped enumeration tightening for listing + debug routes
+//   - V1.6 soft-delete via deleted_at column
+//   - V1.7 audit logging for sensitive routes (debug, delete, listing)
 
 import { Router } from 'express';
 import { createClient } from '@supabase/supabase-js';
-import { requireAdminAuth, listDeployments } from '../lib/auth.js';
+import { requireAdminAuth, listDeployments, getDeploymentConfig } from '../lib/auth.js';
 import { makeError, sendError } from '../lib/errors.js';
+import { buildSystemPrompt } from '../lib/system-prompt.js';
+import { retrieveKb } from '../lib/kb.js';
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SECRET_KEY = process.env.SUPABASE_SECRET_KEY;
@@ -205,6 +228,155 @@ adminRouter.get(
   requireAdminAuth({ requireDeployment: false }),
   (_req, res) => {
     res.json({ status: 'ok', deployments: listDeployments() });
+  }
+);
+
+// ----------------------------------------------------------------
+// GET /admin/debug/system-prompt/:slug  (V1.4.1)
+//
+// Returns the fully rendered system prompt for a deployment, exactly as
+// it would be sent to the Anthropic API.
+//
+// Used to verify:
+//   - CONFIG-vs-CODE separation (no foreign content leaking in)
+//   - Voice profile rendering correctness
+//   - Hard guardrails ordering and content
+//   - Pattern 11 case-3 wording (V1.4.1 fix verification)
+//
+// Auth: any registered admin token. Same shape as /admin/deployments.
+// V1.6 will tighten this to slug-scoped enumeration alongside the listing
+// route — debug visibility into one deployment's voice profile from another
+// deployment's token is acceptable at single-operator state, not at
+// multi-client state.
+// ----------------------------------------------------------------
+adminRouter.get(
+  '/debug/system-prompt/:slug',
+  requireAdminAuth({ requireDeployment: false }),
+  (req, res) => {
+    const { slug } = req.params;
+    if (!slug || typeof slug !== 'string' || !slug.trim()) {
+      return sendError(
+        res,
+        400,
+        makeError({
+          type: 'validation_error',
+          message: 'Missing slug parameter',
+          suggestion: 'GET /admin/debug/system-prompt/:slug',
+          recoverable: false,
+        })
+      );
+    }
+
+    const config = getDeploymentConfig(slug);
+    if (!config) {
+      return sendError(
+        res,
+        404,
+        makeError({
+          type: 'validation_error',
+          message: `Unknown deployment slug: ${slug}`,
+          suggestion: `Valid slugs: ${listDeployments().map(d => d.slug).join(', ')}`,
+          recoverable: false,
+        })
+      );
+    }
+
+    // Render fresh — don't read from server's SYSTEM_PROMPT_CACHE.
+    // The diagnostic value is seeing what buildSystemPrompt() produces
+    // RIGHT NOW given the current CONFIG, not what the server cached at
+    // some earlier point. If they differ, that's a bug worth surfacing.
+    const prompt = buildSystemPrompt(config);
+
+    return res.json({
+      status: 'ok',
+      slug,
+      deployment_name: config.deployment_name,
+      prompt_chars: prompt.length,
+      prompt,
+    });
+  }
+);
+
+// ----------------------------------------------------------------
+// GET /admin/debug/retrieval/:slug?query=...  (V1.4.1)
+//
+// Returns what retrieveKb() returns for a given query against a
+// deployment's KB. Returns hits in retrieval order with full entry
+// content. Used to diagnose retrieval misses vs model behaviour issues.
+//
+// Built for Session 24 Failure 2 Phase 2 diagnosis: when "I'm not
+// technical" should have surfaced Entry 19 (VERBATIM) but didn't, this
+// endpoint shows whether Entry 19 was retrieved at all and where it
+// ranked vs other hits.
+//
+// Auth: any registered admin token. Same shape as /admin/deployments.
+// ----------------------------------------------------------------
+adminRouter.get(
+  '/debug/retrieval/:slug',
+  requireAdminAuth({ requireDeployment: false }),
+  async (req, res) => {
+    const { slug } = req.params;
+    const { query } = req.query;
+
+    if (!slug || typeof slug !== 'string' || !slug.trim()) {
+      return sendError(
+        res,
+        400,
+        makeError({
+          type: 'validation_error',
+          message: 'Missing slug parameter',
+          suggestion: 'GET /admin/debug/retrieval/:slug?query=...',
+          recoverable: false,
+        })
+      );
+    }
+
+    if (!query || typeof query !== 'string' || !query.trim()) {
+      return sendError(
+        res,
+        400,
+        makeError({
+          type: 'validation_error',
+          message: 'Missing or empty query parameter',
+          suggestion: 'GET /admin/debug/retrieval/:slug?query=...',
+          recoverable: false,
+        })
+      );
+    }
+
+    const config = getDeploymentConfig(slug);
+    if (!config) {
+      return sendError(
+        res,
+        404,
+        makeError({
+          type: 'validation_error',
+          message: `Unknown deployment slug: ${slug}`,
+          suggestion: `Valid slugs: ${listDeployments().map(d => d.slug).join(', ')}`,
+          recoverable: false,
+        })
+      );
+    }
+
+    const kbResult = await retrieveKb({
+      deploymentSlug: slug,
+      query: query.trim(),
+    });
+
+    if (!kbResult.ok) {
+      // Retrieval failure surfaces as structured error to caller.
+      // Diagnostic surface should not paper over downstream issues.
+      return sendError(res, 500, kbResult.error);
+    }
+
+    return res.json({
+      status: 'ok',
+      slug,
+      deployment_name: config.deployment_name,
+      query: query.trim(),
+      hit_count: kbResult.hits.length,
+      hits: kbResult.hits,
+    });
   }
 );
 

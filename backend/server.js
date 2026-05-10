@@ -1,16 +1,27 @@
 // backend/server.js
 //
-// V1.4.1 — Patch increment. No engine-architecture changes.
+// V1.4.2 — Patch increment. KB retrieval RPC cutover.
 //
-// The only code change vs V1.4 is the /health endpoint version string
-// ('1.4' → '1.4.1') and the boot log line. All chat dispatch, CORS,
+// The only code change vs V1.4.1 is the /health endpoint version string
+// ('1.4.1' → '1.4.2') and the boot log line. All chat dispatch, CORS,
 // per-deployment system prompt cache, admin route mount, SSE flow,
 // validation, and stop_reason routing are preserved unchanged.
 //
-// V1.4.1 patch scope (all in other files):
-//   - lib/system-prompt.js: Pattern 11 case-3 exclusion list extended +
-//     wording made domain-agnostic + VERBATIM precedence strengthened
-//   - routes/admin.js: two new diagnostic endpoints under /admin/debug/*
+// V1.4.2 patch scope (in other files):
+//   - lib/kb.js: retrieval switched from .textSearch() to RPC call to
+//     search_kb(). Adds rank-based ordering + RELEVANCE_FLOOR enforcement.
+//     Returns rank in hit shape for diagnostic visibility.
+//   - migrations/v1.4.2-search-kb-rpc.sql: new Supabase RPC function.
+//     Must be deployed to Supabase BEFORE this code ships, otherwise
+//     retrievals fail with downstream_unavailable and bot degrades to
+//     no-context mode.
+//
+// V1.4.1 baseline preserved:
+//   - Pattern 11 case-3 fix (system-prompt.js — exclusion list extended,
+//     wording domain-agnostic, VERBATIM precedence, NEVER FABRICATE)
+//   - /admin/debug/system-prompt/:slug endpoint
+//   - /admin/debug/retrieval/:slug?query=... endpoint (now returns rank
+//     scores per hit thanks to the V1.4.2 RPC change)
 //
 // V1.4 baseline preserved:
 //   - CORS allow-list shape (ALLOWED_ORIGINS plural canonical, ALLOWED_ORIGIN
@@ -22,8 +33,6 @@
 //   - Build Standards #1-#5 (caching, structured errors, validation,
 //     streaming, stop_reason router) all preserved per-deployment
 //   - /chat endpoint resolves CONFIG per-request via getDeploymentByOrigin().
-//     The Origin header maps to a deployment via each CONFIG's allowed_origins.
-//     Unknown Origin → config_error (Build Standard #2, non-recoverable).
 //   - System prompts built once per deployment at first-request time and
 //     cached in a Map<slug, string>. Preserves Build Standard #1 prompt-
 //     caching across all deployments.
@@ -56,7 +65,7 @@ const app = express();
 app.use(express.json({ limit: '32kb' }));
 
 // ----------------------------------------------------------------
-// CORS — V1.3 allow-list shape (unchanged at V1.4 / V1.4.1)
+// CORS — V1.3 allow-list shape (unchanged at V1.4 / V1.4.1 / V1.4.2)
 // ----------------------------------------------------------------
 // Read ALLOWED_ORIGINS (plural, comma-separated) as the canonical var.
 // Fall back to ALLOWED_ORIGIN (singular, V1.4 var) for backwards-compat.
@@ -145,7 +154,7 @@ app.get('/health', (_req, res) => {
 
   res.json({
     status: 'ok',
-    version: '1.4.1',
+    version: '1.4.2',
     deployments,
     cors_allowed_origins: ALLOWED_ORIGINS,
     timestamp: new Date().toISOString(),
@@ -328,7 +337,7 @@ app.post('/chat', async (req, res) => {
 prebuildAllPrompts();
 
 app.listen(PORT, () => {
-  console.log(`[chatbotiq] V1.4.1 listening on :${PORT}`);
+  console.log(`[chatbotiq] V1.4.2 listening on :${PORT}`);
   for (const { slug, display_name } of listDeployments()) {
     const prompt = SYSTEM_PROMPT_CACHE.get(slug);
     const chars = prompt ? prompt.length : 0;

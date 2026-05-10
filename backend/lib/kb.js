@@ -1,18 +1,49 @@
 // backend/lib/kb.js
 //
-// V1.2 — Knowledge base retrieval and seed-file parsing.
+// V1.4.2 — Retrieval switched from .textSearch() builder to .rpc('search_kb').
 //
-// Retrieval (used per-turn at /chat):
-//   - Full-text search over question + body
-//   - Filtered by deployment_slug so each deployment sees only its own KB
-//   - Returns top N entries ranked by ts_rank
-//   - Caller decides whether to inject; this module just retrieves
+// V1.2 baseline used the Supabase JS .textSearch() builder which compiles
+// down to plainto_tsquery() server-side. plainto_tsquery is conjunctive —
+// every word in the user's query (after stemming and stopword removal)
+// must match somewhere in the indexed tsvector. Natural-language queries
+// fail this routinely.
 //
-// Parsing (used by scripts/load-kb.js, never per-turn):
-//   - Reads kb-seed.md, splits on `---` blocks, validates fields
-//   - Returns array of { content_type, question, body, attribution, tags }
+// Session 25 diagnosis (StreamlineAI Failure 1, "How much does it cost"):
+// query stems to roughly `much & cost`. Entry 10's body has "cost" but
+// no "much". Entry 17's body contains "as much as you can" and "cost".
+// plainto_tsquery picks Entry 17 (semantically wrong but lexically
+// matches both terms). Entry 10 — the correct VERBATIM pricing entry —
+// fails the conjunctive match and is invisible to retrieval.
 //
-// Errors conform to the structured error shape from lib/errors.js.
+// Same shape explains Session 24 Failure 2 (Entry 19 missed for "I'm not
+// technical, can I still use this?"): query stems to `technic & still &
+// use`. Entry 19's question has "technical"; body has neither "still"
+// nor "use". Conjunctive match fails. One mechanical bug, two surfaced
+// failures.
+//
+// V1.4.2 fix: call the search_kb() RPC defined in
+// migrations/v1.4.2-search-kb-rpc.sql. The RPC uses
+// websearch_to_tsquery() (handles natural language without operator
+// injection risk) and returns ts_rank per row, ordered by rank DESC.
+// Caller can now apply RELEVANCE_FLOOR meaningfully — V1.2 declared
+// the constant but never used it because .textSearch() doesn't expose
+// rank. V1.4.2 enforces it.
+//
+// V1.4.2 also adds rank to the returned hit shape. The retrieval debug
+// endpoint (V1.4.1) now surfaces rank scores in its diagnostic output,
+// so retrieval calibration drift is visible without re-running smoke
+// tests.
+//
+// Backwards compat note: the RPC must exist in Supabase before this
+// code deploys. Deployment order is: (1) run the SQL migration, (2)
+// verify via SQL Editor with three test calls, (3) deploy this code.
+// If the RPC is missing, retrievals fail with a downstream_unavailable
+// structured error and the bot degrades to no-context mode (Pattern 3
+// INSUFFICIENT DATA fires per the system prompt's empty-context handling).
+// Bot stays alive even on the failure path.
+//
+// Parsing functions (parseSeedFile, parseFrontmatter, replaceKbForDeployment)
+// unchanged from V1.2.
 
 import { createClient } from '@supabase/supabase-js';
 import { makeError } from './errors.js';
@@ -30,14 +61,24 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SECRET_KEY, {
   auth: { persistSession: false },
 });
 
-// V1.2 retrieval cap. Enough to test the engine without bloating the
-// dynamic context block. Tunes upward at V1.5+ once we see real query
-// patterns.
+// V1.2 retrieval cap. Now passed to the RPC as p_limit. The RPC orders
+// by rank DESC then limits, so we get the top-N MOST RELEVANT entries
+// rather than the first-N lexical matches as at V1.2.
 const MAX_HITS = 3;
 
 // Minimum ts_rank score to consider an entry relevant. Below this we
 // treat the result as a miss (Pattern 3 — INSUFFICIENT DATA still fires).
-// 0.01 is empirical for V1.2 seed scale; revisit when KB is larger.
+//
+// V1.2 declared this but never enforced it because .textSearch() didn't
+// return rank. V1.4.2 enforces it: results below the floor are dropped
+// in JS after the RPC returns.
+//
+// 0.01 is empirical for V1.2 seed scale and tsvector weighting (question
+// weight A, body weight B). Tune upward as KB grows. Smoke-test the floor
+// at V1.4.2 ship: queries that should hit Entry 10 should produce rank
+// well above 0.01; queries that should miss should produce no hits at
+// all (rank=0 not even returned by the RPC's @@ filter) or hits below
+// the floor.
 const RELEVANCE_FLOOR = 0.01;
 
 
@@ -47,6 +88,9 @@ const RELEVANCE_FLOOR = 0.01;
 
 /**
  * Retrieve top KB entries matching a user query.
+ *
+ * V1.4.2: calls the search_kb() RPC. Returns ranked hits ordered by
+ * relevance, filtered by RELEVANCE_FLOOR.
  *
  * @param {object} params
  * @param {string} params.deploymentSlug - e.g. 'upunt'
@@ -58,24 +102,11 @@ export async function retrieveKb({ deploymentSlug, query }) {
     return { ok: true, hits: [] };
   }
 
-  // plainto_tsquery handles user input safely (no operator injection).
-  // Postgres function call via Supabase RPC keeps the SQL on the server
-  // side. We use a raw query via the .rpc shape isn't available without
-  // creating a function, so we use the .select with a computed filter.
-  //
-  // Two-step approach: fetch candidates by deployment_slug, then rank
-  // via plainto_tsquery on the search_tsv column. Supabase JS client
-  // supports the textSearch builder for exactly this pattern.
-
-  const { data, error } = await supabase
-    .from('kb_entries')
-    .select('id, content_type, question, body, attribution, tags')
-    .eq('deployment_slug', deploymentSlug)
-    .textSearch('search_tsv', query, {
-      type: 'plain',
-      config: 'english',
-    })
-    .limit(MAX_HITS);
+  const { data, error } = await supabase.rpc('search_kb', {
+    p_deployment_slug: deploymentSlug,
+    p_query: query.trim(),
+    p_limit: MAX_HITS,
+  });
 
   if (error) {
     return {
@@ -83,18 +114,22 @@ export async function retrieveKb({ deploymentSlug, query }) {
       error: makeError({
         type: 'downstream_unavailable',
         message: `KB retrieval failed: ${error.message}`,
-        suggestion: 'Retry; if persistent, check Supabase status.',
+        suggestion:
+          'Retry; if persistent, verify search_kb() RPC exists in Supabase ' +
+          '(see migrations/v1.4.2-search-kb-rpc.sql).',
         recoverable: true,
       }),
     };
   }
 
-  // Supabase textSearch returns rows that match. We don't get ts_rank
-  // back through this path — we trust the match and let MAX_HITS cap.
-  // RELEVANCE_FLOOR is enforced at the loader level (V1.4+) when we
-  // route through an RPC that returns rank. For V1.2, presence in
-  // results = relevant enough.
-  return { ok: true, hits: data || [] };
+  // Apply relevance floor. The RPC's @@ filter already excludes zero-rank
+  // hits, but the floor catches weakly-matching results that pass @@ but
+  // would mislead the model. Empirical floor for current KB scale.
+  const filtered = (data || []).filter(
+    hit => typeof hit.rank === 'number' && hit.rank >= RELEVANCE_FLOOR
+  );
+
+  return { ok: true, hits: filtered };
 }
 
 

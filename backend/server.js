@@ -1,11 +1,9 @@
 // backend/server.js
 //
-// V1.4.2 — Patch increment. KB retrieval RPC cutover.
-//
-// The only code change vs V1.4.1 is the /health endpoint version string
-// ('1.4.1' → '1.4.2') and the boot log line. All chat dispatch, CORS,
-// per-deployment system prompt cache, admin route mount, SSE flow,
-// validation, and stop_reason routing are preserved unchanged.
+-// V1.4.2 — Patch increment. KB retrieval RPC cutover.
++// V1.4.3 — Patch increment. Multi-turn VERBATIM precedence tightening
++// (system-prompt.js) + kb.js doc-comment cleanup. No server.js
++// behaviour change.
 //
 // V1.4.2 patch scope (in other files):
 //   - lib/kb.js: retrieval switched from .textSearch() to RPC call to
@@ -152,12 +150,11 @@ app.get('/health', (_req, res) => {
     };
   });
 
-  res.json({
-    status: 'ok',
-    version: '1.4.2',
-    deployments,
-    cors_allowed_origins: ALLOWED_ORIGINS,
-    timestamp: new Date().toISOString(),
+     res.json({
+     status: 'ok',
+-    version: '1.4.2',
++    version: '1.4.3',
+     deployments,
   });
 });
 
@@ -337,11 +334,8 @@ app.post('/chat', async (req, res) => {
 prebuildAllPrompts();
 
 app.listen(PORT, () => {
-  console.log(`[chatbotiq] V1.4.2 listening on :${PORT}`);
-  for (const { slug, display_name } of listDeployments()) {
-    const prompt = SYSTEM_PROMPT_CACHE.get(slug);
-    const chars = prompt ? prompt.length : 0;
-    console.log(`[chatbotiq] deployment: ${slug} (${display_name}) — system prompt: ${chars} chars`);
+-  console.log(`[chatbotiq] V1.4.2 listening on :${PORT}`);
++  console.log(`[chatbotiq] V1.4.3 listening on :${PORT}`);
   }
   console.log(`[chatbotiq] CORS origins: ${ALLOWED_ORIGINS.join(', ')}`);
 });

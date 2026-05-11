@@ -1,6 +1,9 @@
 // backend/lib/kb.js
 //
 // V1.4.2 — Retrieval switched from .textSearch() builder to .rpc('search_kb').
+// V1.4.3 — Doc-comment cleanup only. No functional code change. RPC
+// implementation note corrected to v2.b reality; test-call count corrected
+// to four (regression check included).
 //
 // V1.2 baseline used the Supabase JS .textSearch() builder which compiles
 // down to plainto_tsquery() server-side. plainto_tsquery is conjunctive —
@@ -22,12 +25,26 @@
 // failures.
 //
 // V1.4.2 fix: call the search_kb() RPC defined in
-// migrations/v1.4.2-search-kb-rpc.sql. The RPC uses
-// websearch_to_tsquery() (handles natural language without operator
-// injection risk) and returns ts_rank per row, ordered by rank DESC.
-// Caller can now apply RELEVANCE_FLOOR meaningfully — V1.2 declared
-// the constant but never used it because .textSearch() doesn't expose
-// rank. V1.4.2 enforces it.
+// migrations/v1.4.2-search-kb-rpc.sql. The RPC implements hybrid
+// AND-then-OR matching: an AND path via websearch_to_tsquery() preserves
+// precision when query content is rich, and an OR path via sanitised
+// to_tsquery() catches partial-overlap matches when content is thin. The
+// two paths are combined via UNION ALL with DISTINCT ON (id) ORDER BY id,
+// rank DESC keeping the highest-ranked instance per entry, then a final
+// outer SELECT re-orders by rank globally. Sanitisation is contained to
+// one CTE (regexp_replace strips non-alphanumeric, splits, joins with ' | ',
+// preventing to_tsquery operator-injection risk). Both paths produce
+// ts_rank scores, ordered by rank DESC. Caller can now apply
+// RELEVANCE_FLOOR meaningfully — V1.2 declared the constant but never used
+// it because .textSearch() didn't expose rank. V1.4.2 enforces it.
+//
+// V1.4.2 RPC iteration note (Session 25): first attempt (v2.a) used
+// websearch_to_tsquery() alone expecting OR semantics; Postgres docs misread
+// — websearch_to_tsquery is conjunctive by default. Caught at SQL Editor
+// verification before code cutover (Pattern 23 discipline). v2.b is the
+// hybrid AND-then-OR shape described above. The header text in this file
+// describes v2.b; v2.a is preserved in the Session 25 journal entry for
+// historical record.
 //
 // V1.4.2 also adds rank to the returned hit shape. The retrieval debug
 // endpoint (V1.4.1) now surfaces rank scores in its diagnostic output,
@@ -36,11 +53,14 @@
 //
 // Backwards compat note: the RPC must exist in Supabase before this
 // code deploys. Deployment order is: (1) run the SQL migration, (2)
-// verify via SQL Editor with three test calls, (3) deploy this code.
-// If the RPC is missing, retrievals fail with a downstream_unavailable
-// structured error and the bot degrades to no-context mode (Pattern 3
-// INSUFFICIENT DATA fires per the system prompt's empty-context handling).
-// Bot stays alive even on the failure path.
+// verify via SQL Editor with four test calls (Entry 10 pricing match,
+// Entry 19 technical-skills match, plus a regression check confirming
+// the relevance floor drops weak matches, plus one cross-deployment
+// scoping check), (3) deploy this code. If the RPC is missing,
+// retrievals fail with a downstream_unavailable structured error and the
+// bot degrades to no-context mode (Pattern 3 INSUFFICIENT DATA fires per
+// the system prompt's empty-context handling). Bot stays alive even on
+// the failure path.
 //
 // Parsing functions (parseSeedFile, parseFrontmatter, replaceKbForDeployment)
 // unchanged from V1.2.

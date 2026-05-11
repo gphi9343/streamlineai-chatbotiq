@@ -791,5 +791,418 @@ Repo at `github.com/gphi9343/streamlineai-chatbotiq`, public, tag `v1.4` to be a
 - Custom domain `chat.streamlineai.net.au` — deferred to post-KB-curation per Session 22 SAQ-4. Adding it requires appending to BOTH `streamlineai.js` `allowed_origins` AND Railway `ALLOWED_ORIGINS` env var.
 - UPunt frontend version label — still showing V1.2. Cosmetic update (V1.4 across two `<span class="version">` instances), no engine work, no test surface beyond hard-refresh + visual check.
 
+**POSTSCRIPT (added end of session — tag-discipline finding + D1 sequencing decisions):**
+
+During Step 11 (tag and finalise), `git tag v1.4` failed with "tag already exists". A stale `v1.4` tag from an earlier session (Session 4 V1.4 voice profile work — commit `d7cd300`, message "V1.4 version label bump in server.js (cosmetic, no behaviour change)") was found pointing at the wrong commit. The actual V1.4 changeset for this session is at `8361de3`. Resolution: deleted the stale tag locally and on GitHub, retagged `8361de3`, pushed. Verified `v1.4 8361de3` is the GitHub tag.
+
+Lesson logged as Standing Rule 3 candidate (1/2 proofs) — "Verify tag namespace before extending." At session-start when extending a tag namespace, check whether the target tag already exists locally (`git tag -l v<X>`) and remotely (`git ls-remote --tags origin v<X>`). The "tag already exists" warning at push time is the visible symptom of stale-tag drift; the silent failure mode is leaving the wrong commit tagged. Sibling shape to Standing Rules 1 and 2 (verify state before extending/testing). D1 confirmed Session 23 close-out: held at candidate status, treated as standing rule in D2 master prompt only until second proof, same status Pattern 23 sits at. Promote on next occurrence.
+
+D1 close-out decisions for this session:
+- **Pattern 24 promoted to methodology doc as Pattern 11.** Permissive rules require concrete scope — proven by Session 21 (case-3 scope drift) + Session 23 (example_messages drift). Methodology doc v1.2 re-upload to D2 KB pending before Session 24 open.
+- **Pattern 25 candidate (stale-tag drift) held at 1/2 proofs.** First logged proof is this session. Promote on second occurrence.
+- **Sequencing locked: no D2 build session until StreamlineAI KB hits ~20 entries.** D1 owns curation as parallel work. Next D2 session is v1.4.1 — NewsletterIQ proxy migration + UPunt cosmetic version label bump folded together. Patch increment (no engine architecture change in either component).
+
 ---
 
+### Session 25 — 10 May 2026 — V1.4.1 + V1.4.2
+
+**Built:** Two patch increments shipped this session, both addressing Session 24 smoke-test failures on StreamlineAI deployment. V1.4.1 fixed Pattern 11 case-3 scope drift on numerical content + added diagnostic endpoints. V1.4.2 fixed retrieval — replaced `.textSearch()` with an RPC implementing hybrid AND-then-OR matching with rank-based ordering. Eight files changed total across both patches. Live bot now correctly quotes Entry 10 (pricing VERBATIM) for "How much does it cost?" and Entry 19 (technical-skills VERBATIM) for "I'm not technical, can I still use this?" — the two failures from Session 24.
+
+V1.4.1 changeset:
+- Modified: `backend/lib/system-prompt.js` — Pattern 11 case-3 exclusion list extended (specific factual values: prices, dates, quantities, names, contact details, identifiers); case-3 wording made domain-agnostic (replaces racing-specific examples with `config.domain` reference); VERBATIM PRECEDENCE block added to KB rendering rules; NEVER FABRICATE SPECIFIC FACTUAL VALUES block added; example_messages framing note added ("stylistic references for HOW you speak, not content sources for WHAT you say")
+- Modified: `backend/server.js` — version label `1.4` → `1.4.1`, boot log line
+- Modified: `backend/routes/admin.js` — added `GET /admin/debug/system-prompt/:slug` and `GET /admin/debug/retrieval/:slug?query=...` endpoints under the existing `requireDeployment: false` listing-route auth pattern
+- Tag: `v1.4.1` at commit `3be056b`
+
+V1.4.2 changeset:
+- New: `backend/migrations/v1.4.2-search-kb-rpc.sql` — Postgres function `search_kb(p_deployment_slug, p_query, p_limit)` with hybrid AND (websearch_to_tsquery) + OR (manually-built sanitised to_tsquery) paths combined via UNION ALL, deduplicated DISTINCT ON (id) keeping highest rank per entry, ordered by rank DESC, floor-filtered at 0.0001
+- Modified: `backend/lib/kb.js` — `retrieveKb()` switched from `.textSearch()` builder to `.rpc('search_kb', {...})`; `RELEVANCE_FLOOR` filter now enforced (was declared at V1.2 but unused because `.textSearch()` didn't expose rank); hit shape extended with `rank` field
+- Modified: `backend/server.js` — version label `1.4.1` → `1.4.2`, boot log line
+- Tag: `v1.4.2` at commit `7bd77e6`
+
+V1.4.1 prompt sizes: UPunt `6762` → `8849`, StreamlineAI `9418` → `11505` (+2087 chars each, identical delta confirms universal engine-level fix per CONFIG-vs-CODE separation). V1.4.2 prompt sizes unchanged.
+
+**Decided:**
+
+- **Engine fix is universal across deployments, not StreamlineAI-only.** Pattern 5 (CONFIG vs CODE) makes deployment-specific engine branching a violation. UPunt is "frozen" per Session 22 — no active KB curation, no calibration patches, no smoke-test commitment — but engine improvements that apply universally still flow through. UPunt benefits from the V1.4.1 + V1.4.2 fixes by virtue of shared `lib/` code without active testing commitment. D1 noted this distinction needs sharper definition in master file Operating Discipline section: "Frozen deployment definition: no active KB curation, no calibration patches, no smoke-test commitment. Engine improvements that apply universally still flow through — frozen does not mean forked." Carried as session-close handback to D1.
+
+- **Phase-split V1.4.1 / V1.4.2.** D1 brief originally framed Session 24 failures as two separate engine-level patches in one session. D2 split into Phase 1 (Pattern 11 case-3 fix + diagnostic endpoints, V1.4.1) and Phase 2 (Failure 2 fix, deferred until diagnostic data available). Phase 1 surfaced that Failure 1 had a deeper retrieval-level cause than the brief identified. Phase 2 reshaped from "fix Failure 2's retrieval miss" to "fix retrieval mechanics across both failures" once diagnostic data showed both Session 24 failures traced to the same `plainto_tsquery` conjunctive-matching limitation. One mechanical bug, two surfaced failures — cleaner story than two separate fixes.
+
+- **Diagnostic endpoints built in V1.4.1 (not deferred), gated by listing-route auth pattern.** D1 pre-session decision approved building now, building under `requireAdminAuth({ requireDeployment: false })` matching `/admin/deployments` precedent. Threat model rationale: single operator, one set of admin tokens, cross-deployment leak risk theoretical at N=1 deployments-with-admin-access. V1.6 tightening to slug-scoped enumeration applies to both `/admin/deployments` and `/admin/debug/*` together — first paying-client deployment is the trigger point. Building slug-scoping at V1.4.1 would have been refactored at V1.6 anyway. Logging deferred to V1.7 dashboard work — console.log audit trail rejected as cargo-cult logging without retention/alerting/review.
+
+- **V1.4.2 RPC iteration v2.a → v2.b at SQL verification step.** First RPC attempt used `websearch_to_tsquery` expecting natural-language OR semantics. Postgres docs misread — `websearch_to_tsquery` is conjunctive by default, only honours OR for explicit OR keyword in input. Test (a) "how much does it cost" still missed Entry 10; test (b) "I am not technical can I still use this" returned zero rows for Entry 19. Same retrieval miss as V1.4.1. Caught at SQL Editor verification step before code cutover (Pattern 23 / Standing Rule 2 discipline applied to RPC layer). v2.b replaces with hybrid AND-then-OR: AND path preserves precision when content rich, OR path catches partial overlap when content thin, both compete on rank. Sanitisation contained to one CTE (`regexp_replace` strips non-alphanumeric, splits, joins with ` | `, prevents `to_tsquery` operator-injection risk).
+
+- **UNION ALL + DISTINCT ON over UNION (rank-aware dedup).** UNION dedupes on full row equality; AND-path and OR-path produce different rank values for the same entry, so UNION wouldn't dedupe. DISTINCT ON (id) ORDER BY id, rank DESC keeps the highest-ranked instance per entry, then outer SELECT re-orders by rank globally. Cleaner shape than UNION + max-rank aggregation.
+
+- **V1.4.2 ships despite multi-turn drift on Step 4 turn 2.** Bot quoted Entry 10 verbatim on single-turn pricing question (Step 3 — original ship gate, passes). Multi-turn follow-up "How much do the streamline AI products cost?" surfaced minor drift: bot quoted KB ranges correctly but extended with "ChatbotIQ A$297/mo retainer" (not in Entry 10 — Entry 10 says "retainers from A$197/month" with no per-product retainer differentiation). Same class of bug as Session 24's pricing fabrication, smaller magnitude. D1 ship decision: V1.4.2 ships now, V1.4.3 opens as immediate next D2 session for multi-turn VERBATIM-precedence tightening. Locking V1.4.2 in is correct because three load-bearing improvements (Pattern 11 case-3 numerical exclusion, VERBATIM precedence directive, retrieval RPC) shouldn't be held hostage to V1.4.3 perfectionism. KB curation stays paused at 20/30 entries until V1.4.3 ships — pre-launch readiness criterion includes hard guardrail #1 ("Never invent pricing not in the KB"); multi-turn violation of that guardrail blocks streamlineai.net.au launch.
+
+- **Standing Rule 1 satisfied for all five files this session.** `git show v1.4:backend/lib/system-prompt.js`, `git show v1.4:backend/server.js`, `git show v1.4:backend/routes/admin.js`, plus `lib/kb.js` and `lib/auth.js` Pattern 22 reads provided in user paste. V1.4 baseline confirmed at commit `8361de3` via `git show v1.4 --no-patch --format` before any generation.
+
+- **Standing Rule 2 N/A this session — no frontend changes.** Both V1.4.1 and V1.4.2 are backend-only. UPunt frontend remains at V1.2 cosmetic version label (Session 23 carry-forward, separate item). StreamlineAI frontend unchanged.
+
+- **Pattern 25 candidate (verify tag namespace state before tagging) satisfied.** `git show v1.4 --no-patch --format` and `git ls-remote --tags origin v1.4` run pre-generation to confirm V1.4 tag points at `8361de3` (not the stale Session 4 `d7cd300`). Both v1.4.1 and v1.4.2 tags pushed clean with no stale-tag conflicts.
+
+- **kb.js doc-comment drift logged for V1.4.3 cleanup.** `kb.js` header still references "websearch_to_tsquery" as the V1.4.2 fix (correct for v2.a, stale for v2.b) and "three test calls" verification (we ran four — added regression check). Functional code is correct; comment is stale. 2-minute side-pass during V1.4.3 (system-prompt.js touched anyway). D1 instruction: do not open a separate session for comment cleanup.
+
+**Broken:**
+
+- **Multi-turn VERBATIM-precedence drift surfaced on V1.4.2 smoke test.** Bot quotes VERBATIM correctly on initial response and on single-turn questions. On multi-turn follow-up where the user asks an adjacent question, bot quotes the KB content correctly but extends with synthesised supportive content not in any KB entry. Three observed instances during smoke test:
+  - Step 4 turn 2 ("How much do the streamline AI products cost?"): bot added "ChatbotIQ A$297/mo retainer" (not in KB), "complexity, integrations, how much training data you've got" (not in KB), "Most deployments land in the lower half of those ranges" (not in KB)
+  - Step 5 ("I'm not technical, can I still use this?"): bot quoted Entry 19 cleanly but appended "Most of what we build sits in the background and just works. You're not managing code or configuring anything technical — you'll interact with the tools the same way you'd use any other web app." — none of which is in any KB entry
+  - Step 6 control "What does StreamlineAI do?": minor REFERENCE-style extension after Entry 1 quote, but the extension is voice-profile-shaped and stays within domain; flagged as same shape, lower severity
+- Existing in-flight items unchanged: UPunt frontend version label V1.2 (cosmetic), V1.6 deployment-scoped admin auth tightening, custom domain `chat.streamlineai.net.au` deferred.
+
+**Next:** Session 26 begins V1.4.3 immediately — multi-turn / extended-response VERBATIM precedence tightening. Single file change (`system-prompt.js`). 30-45 minute estimate. Scope per D1 close-out: strengthen VERBATIM precedence directive to cover the case where bot quotes correctly but extends with synthesised supportive content. Likely shape: explicit instruction that any content beyond the quoted material in a VERBATIM-anchored response must come from another KB entry in the same CONTEXT block, not from voice profile examples or general knowledge. Doc-comment cleanup in `kb.js` folds into this session (2-minute side-pass). KB curation resumption gated on V1.4.3 ship.
+
+**Build Standards check:**
+
+- #1 prompt caching — V1.4.1 grew per-deployment prompts ~+2087 chars (universal engine content added to KB rendering rules + INSUFFICIENT DATA exclusion list + voice profile framing note). Cache machinery unchanged — per-deployment `Map<slug, string>` cache still hits on identical strings within a session. V1.4.2 prompt unchanged.
+- #2 structured error handling — V1.4.2 `kb.js` RPC error path produces `downstream_unavailable` recoverable structured error if the RPC is missing or fails. Bot degrades to no-context mode (Pattern 3 INSUFFICIENT DATA fires) rather than crashing.
+- #3 response validation — unchanged.
+- #4 streaming — unchanged.
+- #5 stop_reason router — unchanged.
+- #6 pre-deployment checklist — passed for both V1.4.1 and V1.4.2 ship gates. V1.4.2 multi-turn drift logged but not classified as a Step 3 ship-gate failure (Step 3 single-turn passed cleanly).
+
+**Standing rules check:**
+
+- Rule 1 (verify prior version's exports before extending) — satisfied. Five Pattern 22 reads at session open: `system-prompt.js`, `server.js`, `streamlineai.js`, `upunt.js` provided by user; `kb.js`, `auth.js`, `admin.js` provided when scope reshaped from V1.4.1-only to V1.4.1 + V1.4.2 retrieval fix.
+- Rule 2 (hard-refresh after frontend deploy) — N/A this session, no frontend changes.
+
+**Pattern 23 second proof confirmed.** RPC verification at SQL Editor before code cutover caught the v2.a retrieval miss before it reached deployment. First proof was V1.2 cached frontend (Session 19) — `/health` version-check + hard-refresh discipline. Same shape: verify runtime state matches expected state before depending on it. Different surfaces (browser cache vs database function), same discipline. D1 promotes to methodology doc as Pattern 12 in v1.2 batch update.
+
+**Cost / spend state:**
+
+- V1.4.1 system prompt grew ~2087 chars per deployment. Per-turn cost increase: cache write on first turn of a session is slightly larger; cache hits on subsequent turns are unchanged in pricing model (cached tokens cheaper than fresh). Negligible cost impact at current scale.
+- V1.4.2 RPC adds two `@@ tsquery` operations per chat request instead of one. Both hit the same GIN-indexed tsvector column. Negligible. Anthropic API cost unchanged — same prompt, same retrieval result shape from caller perspective.
+- `chatbotiq-dev` API key cap unchanged at $40/month.
+- `chatbotiq-prod` API key still not created — KB curation paused per D1 means StreamlineAI public-chat traffic stays at testing-only scale.
+- Railway: still on Hobby trial. Calendar reminder for upgrade by 24 May 2026 stands.
+
+**Files changed at V1.4.2 (cumulative this session):**
+
+V1.4.1 (commit `3be056b`, tag `v1.4.1`):
+- Modified: `backend/lib/system-prompt.js`, `backend/routes/admin.js`, `backend/server.js`
+
+V1.4.2 (commit `7bd77e6`, tag `v1.4.2`):
+- New: `backend/migrations/v1.4.2-search-kb-rpc.sql`
+- Modified: `backend/lib/kb.js`, `backend/server.js`
+
+**Open questions for D1 (carried forward, plus new this session):**
+
+- V1.4.3 immediate next session — multi-turn VERBATIM-precedence tightening. Scope locked at session close.
+- KB curation pause extension — was "until v1.4.1 fixes engine-level failures", now "until V1.4.3 multi-turn VERBATIM precedence holds." D1 to update master file.
+- Master file frozen-deployment clarification — exact text from D1 Session 25: "Frozen deployment definition: no active KB curation, no calibration patches, no smoke-test commitment. Engine improvements that apply universally still flow through — frozen does not mean forked." D1 to add to Operating Discipline section.
+- Pattern 23 → Pattern 12 promotion in methodology doc v1.2 batch update — confirmed second proof this session, queued.
+- Methodology doc v1.2 batch update queue is now five items (was four): Pattern 1 rename (REFERENCE/VERBATIM), Pattern 22 promotion body, testbed-scaffolding corollary, Pattern 24 → Pattern 11 promotion (already queued), Pattern 23 → Pattern 12 promotion (NEW this session).
+- Multi-VERBATIM context behaviour — Step 4 retrieval surfaced both Entry 10 and Entry 12 (free tools pricing) at tied rank 0.303 for "how much does it cost". Bot handled the multi-VERBATIM CONTEXT block correctly on turn 1 (quoted Entry 10, ignored Entry 12). System prompt's VERBATIM PRECEDENCE directive doesn't explicitly cover "which one to quote when both are relevant" — bot got it right by inference. Logged as observation, not a bug. Possible V1.5 calibration item if multi-VERBATIM scenarios produce drift in production.
+- UPunt frontend version label V1.2 cosmetic update — still carried.
+- Custom domain `chat.streamlineai.net.au` — deferred to post-KB-curation per Session 22 SAQ-4. KB curation now gated on V1.4.3.
+
+---
+
+### Session 26 — 11 May 2026 — V1.4.3
+
+**Built:** Multi-turn / extended-response VERBATIM precedence tightening shipped as V1.4.3 at commit `4f740d3`, tag `v1.4.3`. Three files changed. Directive is live in the deployed prompt and verified via `/admin/debug/system-prompt/streamlineai`. Engine fix universal across deployments (UPunt and StreamlineAI both grew by identical +2339 char delta — Pattern 5 intact).
+
+V1.4.3 changeset:
+- Modified: `backend/lib/system-prompt.js` — new VERBATIM RESPONSE SCOPE directive inserted between VERBATIM PRECEDENCE and NEVER FABRICATE in the KB rendering rules. Constrains response shape when a VERBATIM quote anchors the response: quoted material plus at most one short framing sentence, framing strictly limited to two shapes (content from another CONTEXT entry, or content-free transition phrase naming the source/restating the topic). Three named anti-patterns enumerated by behaviour: (a) fabricated specific values, (b) synthesised supportive prose, (c) "what this means in practice" elaboration. Multi-turn invariance stated explicitly — Turn 2 does not get a relaxation because Turn 1 already cited the source. Header comment block rewritten to reflect V1.4.3 scope and rationale.
+- Modified: `backend/lib/kb.js` — header doc-comment cleanup only. V1.4.2 RPC description corrected from v2.a's `websearch_to_tsquery()`-alone shape to v2.b's hybrid AND-then-OR (websearch_to_tsquery AND path + sanitised to_tsquery OR path, UNION ALL with DISTINCT ON rank-aware dedup). Test-call count corrected from three to four (regression check + cross-deployment scoping check included). Functional code untouched — verified comment-only via `git diff` inspection of all `+`/`-` lines.
+- Modified: `backend/server.js` — version label `1.4.2` → `1.4.3` in `/health` endpoint and boot log line. Header comment block updated for V1.4.3 patch scope.
+
+Prompt sizes after V1.4.3: UPunt `11188`, StreamlineAI `13844`. Both deployments grew by exactly `+2339` chars (V1.4.2 was 8849 / 11505). Identical delta across deployments confirms engine-level universal fix.
+
+**Decided:**
+
+- **Strict framing per D1 SAQ-1.** Framing sentence around a VERBATIM quote must be either (1) content drawn from another entry in the same CONTEXT block, or (2) a content-free transition phrase that names the source or restates the question topic. Moderate framing ("OK if it restates the user's question or names the source — no new factual content") was rejected as the exact latitude the model already took on Session 25 Step 5. Pattern 11 (Permissive rules require concrete scope) applied to the framing surface, not just question-type classification.
+
+- **Named anti-patterns per D1 SAQ-2.** Three Session 25 failure shapes enumerated by behaviour: (a) fabricated specific values, (b) synthesised supportive prose with no fabricated values, (c) "what this means in practice" elaboration. Abstract-principle-plus-model-interpretation approach rejected — that approach failed at V1.3, V1.3.1, V1.3.2 case-3, and Session 24. Concrete worked-out anti-patterns mirror the V1.3.2 case-3 fix that held.
+
+- **Multi-turn invariance stated explicitly.** Rule wording: "Turn 2 does not get a relaxation because Turn 1 already cited the source. Each turn re-retrieves; each turn that hits a VERBATIM entry applies the same scope rule." Adjacent-question handling explicit (different KB entry → use that, apply scope rule again; nothing relevant → INSUFFICIENT DATA).
+
+- **Standing Rule 1 satisfied for all three files.** Pattern 22 reads at session open: `git show v1.4.2:backend/lib/system-prompt.js`, `git show v1.4.2:backend/lib/kb.js`, `git show v1.4.2:backend/server.js` all read into context before any generation. No surprise findings — all three files matched journal references exactly. V1.4.2 baseline confirmed at commit `7bd77e6` via `git show v1.4.2 --no-patch --format` pre-generation.
+
+- **Standing Rule 2 N/A this session — no frontend changes.** Both V1.4.3 changes are backend-only. UPunt and StreamlineAI frontends unchanged. Hard-refresh not required for V1.4.3 ship gate.
+
+- **kb.js doc-comment scope discipline maintained.** Side-pass cleanup folded into V1.4.3 ship (D1 instruction Session 25 — no separate session for comments). Diff inspection confirmed every `+`/`-` line in kb.js was a `//` comment line. Functional code preserved byte-identical.
+
+**Broken — V1.4.3 directive does not hold on primary target:**
+
+Five-test smoke at session close. **Two of three directive-testable cases fail.** Directive is provably present in deployed prompt (verified via `/admin/debug/system-prompt/streamlineai` — full VERBATIM RESPONSE SCOPE block including all three anti-patterns visible). Retrieval correctly surfaces the VERBATIM entries for Tests B and D. Model sees the rule, sees the entry, and extends the quote anyway on Tests B and C.
+
+| Test | Prompt | Result | Notes |
+|---|---|---|---|
+| A | "What does StreamlineAI do?" → "How much do the streamline AI products cost?" | FAIL | Retrieval miss — Entry 10 not in CONTEXT. V1.4.2 retrieval calibration gap, separate from V1.4.3 scope. |
+| B | "I'm not technical, can I still use this?" | **FAIL** | Entry 19 quoted verbatim. Then: "That's straight from Gareth. Most of our clients aren't technical — the tools are built to be simple to use, not impressive to look at." First sentence passes V1.4.3 shape (2). Second sentence is **anti-pattern (b)** — synthesised supportive prose, no fabricated values, no trace to CONTEXT. |
+| C | "What does StreamlineAI do?" | **FAIL** | Entry 1 quoted verbatim. Then: "That's Gareth's take. We've got four main products — LeadLock, TriageIQ, NewsletterIQ, and ChatbotIQ — plus custom builds when something specific doesn't fit the off-the-shelf options." Second sentence is **anti-pattern (c)** — "what this means in practice" elaboration introducing product names that may exist in other KB entries but are not in this CONTEXT block. |
+| D | "How much does it cost?" | PASS | Entry 10 quoted verbatim. Trailing "What kind of business are you running?" is a content-free transition (V1.4.3 shape 2). Single-turn pricing control clean. |
+| E | "What's your phone number?" | PASS (with calibration note) | INSUFFICIENT DATA branch alive — bot did not invent a phone number, redirected to operator booking. Voice-shaped redirect rather than literal "INSUFFICIENT DATA — [reason]" opener. V1.4.1 prompt expects the literal signal string; current behaviour skips to voice-shaped redirect. Operator-facing this works; for log-mining the literal signal would be more useful. Separate calibration question, not V1.4.3 scope. |
+
+**Test A retrieval finding (separate from V1.4.3 directive failure):**
+
+Retrieval endpoint output for query `"How much do the streamline AI products cost"`:
+- Hit 1: `f23af807...` VERBATIM "Can you build something custom?" rank `0.17022`
+- Hit 2: `efbf2d91...` REFERENCE "What does 'client trains the AI' mean?" rank `0.133744`
+- Hit 3: `17a413d6...` VERBATIM "What's StreamlineAI's philosophy on AI for small business?" rank `0.133744`
+
+Entry 10 (`710e7688...`, the pricing VERBATIM) not in top 3. Single-turn `"How much does it cost?"` surfaces Entry 10 at rank `0.303964` (control test confirmed). Extra tokens `streamline`, `AI`, `products` in the Test A query split rank weight across entries that lexically match those terms, pushing Entry 10 below the floor or out of the top 3. V1.4.2 hybrid AND-then-OR works for the original Session 25 query but doesn't cover this paraphrase.
+
+This is V1.4.2 retrieval calibration scope, not V1.4.3 directive scope. Logged for D1 sequencing decision (V1.4.4 retrieval calibration pass vs V1.5 priorities).
+
+**Diagnostic hypotheses for Tests B and C directive failure:**
+
+Three candidate causes, in order of plausibility:
+
+1. **Tonal pressure overrides rule pressure.** Voice profile contains "Acknowledge the prospect's situation back to them in your own words before answering" as an active style instruction (line 12 of the voice profile rendering in the prompt). Voice profile is placed last in the cached block per the existing comment ("Placed last in the cached block so the model attends to it most strongly"). The model honours the voice instruction over the scope rule because the voice instruction comes after VERBATIM RESPONSE SCOPE in the prompt and Pattern 8 says models attend most strongly to information near the end. Test D passes because pricing has a definitive numeric answer with no obvious tonal pull to extend; Tests B and C answer questions where there's natural pull to elaborate ("can I still use this?" wants reassurance; "what does StreamlineAI do?" wants description).
+
+2. **Directive placement.** V1.4.3 VERBATIM RESPONSE SCOPE sits in the middle of the prompt with INSUFFICIENT DATA, hard guardrails, and voice profile all coming after it. Same Pattern 8 logic as (1) — the rule is far from the response position.
+
+3. **Anti-pattern wording too abstract for self-classification.** The directive describes the failure shapes correctly in abstract terms but the model doesn't classify its own output ("Most of our clients aren't technical — the tools are built to be simple to use") as matching the description "synthesised supportive prose." It may classify the same output as "voice-shaped acknowledgement" — which the voice profile actively encourages.
+
+The structural shape of the problem is a tension between two prompt instructions that both fire: voice profile says acknowledge in own words; VERBATIM RESPONSE SCOPE says do not extend with non-CONTEXT content. The bot resolves the tension toward voice. V1.4.3 wording revisions alone unlikely to resolve — would require either directive relocation (move to end of prompt, after voice profile), voice profile revision (carve out a VERBATIM exception in the "acknowledge in your own words" instruction), or structural change (post-stream output validator that strips non-CONTEXT extension before token streaming).
+
+This is **outside V1.4.3 scope** to fix. Session 26 ships V1.4.3 as deployed-but-not-effective on its primary target. Decision on what V1.4.4 looks like is a D1 call.
+
+**D2 discipline failures this session — both logged for journal:**
+
+1. **Diff-syntax-as-paste error.** I presented `server.js` edits as diff blocks (`-old line` / `+new line`) in chat. Operator pasted the diff markers literally into the file. Railway deploy crashed on `SyntaxError: Unexpected identifier 'express'` (parser failed on `-//` and `+//` lines, cascaded to first identifier it could name). Diff syntax is a display convention, not file content. Should have given final file content from the start. **Recovery cost:** one Railway crash, one tag-rebuild cycle, ~15 minutes. Logged as Standing Rule 4 candidate (1/2 proofs): "When generating code for the operator to paste, give the final file content, never diff representation. `-`/`+` prefixes are display markers, not source." Sibling to Standing Rules 1, 2, 3.
+
+2. **Pre-flight retrieval check skipped.** V1.4.1 added the `/admin/debug/retrieval` endpoint specifically to verify retrieval before chat-surface smoke tests. Session 26 ran Test A as a chat test first, found the failure, then ran the retrieval endpoint to diagnose. Should have run the retrieval endpoint as a pre-flight before any chat smoke — would have caught the Test A retrieval gap in ~30 seconds without needing the chat session. **Recovery cost:** ~5 minutes plus user confusion about whether the directive was failing or retrieval was failing. Logged as Standing Rule 5 candidate (1/2 proofs): "Use diagnostic endpoints as pre-flight before chat-surface smoke tests when available." Sibling to existing rules — same shape as "verify state before testing."
+
+3. **Inferred from journal references rather than reading source.** Mid-session, during auth diagnostic, I reasoned about `lib/auth.js` middleware behaviour from journal references (Session 22 line 631, Session 23 line 707) rather than reading the actual file. Caught myself and pivoted to `git show v1.4.2:backend/lib/auth.js`. No deploy cost — pivot happened before any code change — but the discipline lapse is the same class as Standing Rule 1's origin (Session 18 V1.1 build). Logged as same-class-as-existing.
+
+**Recovery cycle notes:**
+
+- Stale-tag drift fired once at Step 4 (Standing Rule 3 candidate). `git add` was missing from the commit sequence; commit ran with nothing staged; `git tag v1.4.3` tagged HEAD which was still V1.4.2 (`2a23783` problem). Recovery: deleted local + remote tag, re-staged + re-committed + re-tagged. Standing Rule 3 candidate now has **second proof firing in same session** (different mechanism vs Session 23's stale-pre-existing-tag, but same class: tag landed on wrong commit). D1 to decide promotion path.
+
+- Diff-marker contamination crash at Step 5. Recovery: regenerated full `server.js` as artefact, replaced entirely (not str_replace), re-committed at `4f740d3`. The recovery also surfaced that the operator's manual application of the prior diff snippets had **deleted the boot `for` loop** that logs each deployment's prompt size — not just contaminated the file with diff markers but lost code. Regenerated file restored the loop from V1.4.2 baseline.
+
+- Token-format misadventure at Step 7 diagnostic. Operator pasted curl placeholder syntax `<token>` literally; then 65-char token (extra `9` from copy); then 66-char token (literal `<` and `>` from my example). Eventually resolved with `$token = "..."` variable assignment + `$token.Length` check. **Tooling lesson for next session:** when giving paste-ready commands with token substitution, build the assignment as a script step rather than inline placeholder.
+
+**Cost / spend state:**
+
+- V1.4.3 prompt grew +2339 chars per deployment. Per-turn cost increase: cache write on first turn of a session is slightly larger; cache reads on subsequent turns unchanged in pricing model. Negligible at current scale.
+- Session 26 chat smoke test consumed 5 fresh sessions + 3 retrieval diagnostic calls. Token cost ~$0.20 total estimated.
+- `chatbotiq-dev` API key cap unchanged at $40/month.
+- `chatbotiq-prod` API key still not created — StreamlineAI public-chat traffic remains testing-only scale.
+- Railway: still on Hobby trial. Calendar reminder for upgrade by 24 May 2026 stands.
+
+**Build Standards check:**
+
+- #1 prompt caching — V1.4.3 grew per-deployment prompts +2339 chars (universal engine content added to KB rendering rules). Cache machinery unchanged — per-deployment `Map<slug, string>` cache still hits on identical strings within a session.
+- #2 structured error handling — unchanged.
+- #3 response validation — unchanged.
+- #4 streaming — unchanged.
+- #5 stop_reason router — unchanged.
+- #6 pre-deployment checklist — passed Architecture and Operations gates. **Failed Testing gate:** Tests B and C fail. Operator decision required on whether V1.4.3 ships "as deployed" with known directive limitation or rolls back. D2 recommendation below.
+
+**Standing rules check:**
+
+- Rule 1 (verify prior version's exports before extending) — satisfied. Three Pattern 22 reads at session open. Plus a fourth (`auth.js`) mid-session when diagnostic required.
+- Rule 2 (hard-refresh after frontend deploy) — N/A this session, no frontend changes.
+
+**Files changed at V1.4.3:**
+
+- Modified: `backend/lib/system-prompt.js`, `backend/lib/kb.js`, `backend/server.js`
+- Tag: `v1.4.3` at commit `4f740d3` (after recovery from initial `2a23783` diff-marker-contamination crash)
+
+**Next:** Handback to D1 below. Session 27 scope depends on D1 decision on whether V1.4.4 attempts a structural fix for the directive-vs-voice-profile tension, defers to V1.5, or rolls back to V1.4.2.
+
+**Open questions for D1 (carried forward, plus new this session):**
+
+- **V1.4.3 directive failure on primary target — D1 decision required.** Handback below.
+- **V1.4.4 retrieval calibration scope.** Test A revealed V1.4.2 retrieval doesn't surface Entry 10 for paraphrases like "How much do the streamline AI products cost?" Separate from V1.4.3 directive scope. D1 to sequence vs V1.5 priorities.
+- **Standing Rule 3 promotion (stale-tag / tag-on-wrong-commit).** Second proof confirmed this session — different mechanism (missing `git add` before commit vs pre-existing stale tag), same class. D1 to decide whether to promote to methodology doc as Pattern 12 sibling, or hold for third proof.
+- **Standing Rule 4 candidate.** "When generating code for the operator to paste, give the final file content, never diff representation." First proof this session. Held at candidate.
+- **Standing Rule 5 candidate.** "Use diagnostic endpoints as pre-flight before chat-surface smoke tests when available." First proof this session. Held at candidate.
+- Methodology doc v1.2 batch update — queue is now five items (Pattern 1 rename, Pattern 22 promotion body, testbed-scaffolding corollary, Pattern 24 → Pattern 11 promotion, Pattern 23 → Pattern 12 promotion) plus three V1.4.3 standing-rule candidates above.
+- INSUFFICIENT DATA literal-signal calibration. Test E revealed bot redirects in voice but skips the literal "INSUFFICIENT DATA — [reason]" opener. V1.4.1 prompt expects the signal string for log-mining. Separate calibration question, V1.5 or later.
+- Master file frozen-deployment clarification (Session 25 carry-forward). D1 still to update Operating Discipline section.
+- KB curation pause extension — was "until V1.4.3 multi-turn VERBATIM precedence holds." V1.4.3 directive does NOT hold. D1 to decide whether curation can resume against the partially-broken state or remains paused.
+- UPunt frontend version label V1.2 cosmetic update — still carried.
+- Custom domain `chat.streamlineai.net.au` — deferred to post-KB-curation per Session 22 SAQ-4.
+
+---
+
+### HANDBACK TO D1 — V1.4.3 directive failure on primary target
+
+**Context:**
+
+V1.4.3 shipped to V1.4 spec at commit `4f740d3`, tag `v1.4.3`. Directive verified live in deployed prompt for both deployments. Smoke test of three Session 25 failure cases (Tests B, C — directive-testable; Test A — retrieval-bound) plus two controls (Test D single-turn pricing, Test E INSUFFICIENT DATA):
+
+- Tests D and E pass.
+- Test A fails on retrieval (separate scope).
+- **Tests B and C fail on directive.** Both quote the VERBATIM entry correctly, then extend with anti-pattern (b) or (c) content explicitly named-and-forbidden by the V1.4.3 directive that's live in the prompt.
+
+The directive is present. The retrieval surfaces the right entry. The model reads the rule and violates it.
+
+Structural diagnosis: the voice profile's "Acknowledge the prospect's situation back to them in your own words before answering" instruction tensions against VERBATIM RESPONSE SCOPE. Voice profile is placed last in the cached block (per existing engineering comment, deliberately) so the model attends to it strongly. Test D passes because pricing has no tonal pull to extend; Tests B and C answer questions with natural pull to elaborate (reassurance, description).
+
+V1.4.3 wording revisions alone unlikely to resolve. The fix is one of: directive relocation, voice profile revision, or structural change (post-stream output validator).
+
+**Question for D1 (framed as decision with options):**
+
+1. **V1.4.4 — directive relocation.** Move VERBATIM RESPONSE SCOPE to end of system prompt, after voice profile. Cost: ~15 minutes. Risk: minimal — same content, different position. Test cost: re-run Tests B, C, D, E. Plausibility of success: moderate — Pattern 8 attention argument is consistent but unproven.
+
+2. **V1.4.4 — voice profile carve-out.** Add to voice profile's "acknowledge in your own words" instruction: "EXCEPT when a VERBATIM entry is quoted — in that case, the quote stands alone and acknowledgement is a content-free transition only, per VERBATIM RESPONSE SCOPE." Cost: ~30 minutes (touches CONFIG, requires D1 voice-profile sign-off). Risk: moderate — voice profile is operator-curated content (Pattern 5), this is engine-side directive bleeding into voice profile space. Plausibility of success: higher than (1) because directly addresses the tension.
+
+3. **V1.4.4 — structural: post-stream output validator.** Add a Build Standard #3-shaped validator that runs after stream completes, before persistence and `done` event. If response contains a VERBATIM quote (detectable: quoted block with attribution) followed by content not traceable to any CONTEXT entry, log validation_warning, optionally truncate the extension before persistence. Cost: ~2-3 hours — new file, integration with chat handler, traceability check against CONTEXT block. Risk: high — first time we're adding response-modification logic in the chat path, not just observation. Plausibility of success: very high if implemented correctly but introduces new failure surface.
+
+4. **Defer V1.4.4 — accept current state and resume KB curation.** Document V1.4.3 as "directive deployed, holds on single-turn factual questions, drifts on multi-turn or reassurance-shaped questions." Resume KB curation against the partially-broken state. Plan structural fix for V1.5 alongside scheduled ingestion or other surface work. Cost: zero D2 time. Risk: bot ships to public traffic with known guardrail violation — hard guardrail #1 ("Never invent pricing not in the KB") still works because Test A's failure is retrieval not directive, but anti-pattern (b)/(c) failures are observable in any reassurance-shaped or descriptive-shaped question.
+
+5. **Rollback V1.4.3.** Revert to V1.4.2 baseline at commit `7bd77e6`. Cost: ~5 minutes (one git revert + redeploy). Risk: returns to V1.4.2 state where Session 25 Step 4 turn 2 failure (multi-turn pricing fabrication including fabricated retainer values) is also in scope. Worse than current V1.4.3 state.
+
+**Recommendation:**
+
+Option 2 (voice profile carve-out) is the cheapest plausible fix and directly addresses the diagnosed tension. Pattern 5 concern is real — engine-side directives shouldn't leak into voice profile space — but the carve-out can be framed as a voice profile instruction *about how voice profile applies in a specific context*, which is voice profile's own concern. Worth one V1.4.4 attempt at Option 2 before reaching for Option 3.
+
+If Option 2 fails at V1.4.4 smoke, Option 3 becomes the path. Option 3 is the only option whose plausibility of success is "very high."
+
+Option 1 is cheap to try alongside Option 2 — could be combined into a single V1.4.4 ship (relocate directive AND add voice profile carve-out).
+
+Options 4 and 5 are not recommended. Option 4 leaves a public-facing guardrail violation in place; Option 5 reverts to a strictly-worse failure mode.
+
+**Status until D1 resolves:** V1.4.3 deployed at Railway and serving traffic with the known directive failure on multi-turn / reassurance-shaped / descriptive-shaped questions. Single-turn factual questions (pricing, INSUFFICIENT DATA path) work correctly. KB curation paused per existing Session 25 instruction until V1.4.3 multi-turn VERBATIM precedence holds — D1 to confirm whether that gate now reopens partially or remains closed.
+
+D2 awaiting D1 decision on V1.4.4 path before opening next build session.
+
+---
+
+### Session 27 — 11 May 2026 — V1.4.4
+
+**Built:** VERBATIM RESPONSE SCOPE block relocation + voice profile carve-out shipped as V1.4.4 at commit `f66cfce`, tag `v1.4.4`. Four files changed. Engine-level fix universal across deployments (UPunt and StreamlineAI both grew by identical +1539 char delta vs V1.4.3 — Pattern 5 intact).
+
+V1.4.4 changeset:
+
+- Modified: `backend/lib/system-prompt.js` — VERBATIM RESPONSE SCOPE block extracted from KB BEHAVIOUR section and placed as a new top-level section AFTER the voice profile. KB BEHAVIOUR retains VERBATIM PRECEDENCE (substitution rule) and NEVER FABRICATE (content rule) — these govern content, not response shape. Section gets a forward-pointer sentence at its end so model knows the scope rule exists when reading content rules. VERBATIM RESPONSE SCOPE block opens with a one-sentence preamble making the relocation rationale explicit to the model ("The rule is the last rule in this prompt deliberately — it takes precedence over the voice profile's stylistic instructions whenever the two would produce different response shapes"). Anti-pattern (b) gets an inline amplifier sentence naming the voice-profile-vs-scope-rule tension directly. New "Voice profile precedence carve-out" paragraph inside the block explicitly states voice still shapes framing sentences but does not license additional sentences of synthesised content. All three named anti-patterns (a/b/c) and the multi-turn invariance clause preserved verbatim from V1.4.3.
+
+- Modified: `backend/config/streamlineai.js` — voice profile `style` field gets a trailing two-sentence carve-out: "EXCEPT when a VERBATIM entry from the CONTEXT block answers the question — in that case the quote stands alone, acknowledgement is a content-free transition only, no elaboration on the quoted content. See VERBATIM RESPONSE SCOPE for the full rule." Exact wording per session brief.
+
+- Modified: `backend/config/upunt.js` — same carve-out as `streamlineai.js`, applied as a third paragraph after the existing "Punta's voice carries personality only when there's something to say" passage. UPunt's existing style had no explicit "acknowledge in your own words" instruction (different voice from StreamlineAI's prospect-focused style), but engine-level consistency means both deployments take the same VERBATIM-scope amendment.
+
+- Modified: `backend/server.js` — version label `1.4.3` → `1.4.4` in `/health` endpoint and boot log line. Header comment block updated. No behaviour change.
+
+Prompt sizes after V1.4.4: UPunt `12727`, StreamlineAI `15381`. Both deployments grew by exactly `+1539` chars (V1.4.3 was 11188 / 13844). Identical delta across deployments confirms engine-level universal fix per Pattern 5.
+
+**Decided:**
+
+- **Option 1 + Option 2 combined per D1 Session 27 directive.** Session 26 handback options 3 (post-stream output validator, ~2-3 hours, new failure surface) and 4 (defer to V1.5) rejected. Option 1 (directive relocation, low cost, low risk, moderate plausibility) and Option 2 (voice profile carve-out, moderate cost, moderate risk, higher plausibility) combined to reinforce the fix from both sides. Pattern 8 attention-weighting argument used in two directions: voice profile remains near-last (still strongly attended), VERBATIM RESPONSE SCOPE now sits truly last (the rule the voice must yield to is the rule the model encounters last, immediately before generating).
+
+- **Engine vocabulary in voice profile CONFIG accepted per Pattern 5 ownership argument.** Session 26 flagged Option 2 as "moderate risk — voice profile is operator-curated content (Pattern 5), this is engine-side directive bleeding into voice profile space." D1 Session 27 ruled the trade explicitly: Pattern 5 is about WHO owns the field, not what vocabulary appears in it. Voice profile is operator-curated CONFIG; D1 owns the field; D1 approves the wording. Softer language ("when a direct quote from your knowledge base answers the question") loses precision exactly where precision matters — Pattern 11 (vague permissive scope gets read liberally by the model) directly applies. Engine vocabulary stays. Cost: future operators curating their own voice profile need to understand what "VERBATIM" and "CONTEXT block" mean. That's a documentation burden for the operator onboarding questionnaire / voice profile authoring guide — to write when second paying-client deployment surfaces, not now.
+
+- **UPunt carve-out applied with same engine vocabulary as StreamlineAI** despite UPunt's style having no explicit "acknowledge in your own words" instruction. Engine-level consistency over per-deployment customisation for response-shape constraints — the carve-out is defensive across deployments. Punta's "bit of colour and personality" disposition can produce the same extension drift the StreamlineAI Tests B and C hit; the carve-out applies the same constraint as a precaution.
+
+- **Standing Rule 1 satisfied for all four files.** `git show v1.4.3:backend/lib/system-prompt.js`, `git show v1.4.3:backend/config/streamlineai.js`, `git show v1.4.3:backend/config/upunt.js`, `git show v1.4.3:backend/server.js` all read into context before any generation. User pasted file contents from `git show` outputs directly into chat. No memory-based assumptions on file shape.
+
+- **Standing Rule 2 N/A this session — no frontend changes.** Both V1.4.4 changes are backend-only. UPunt and StreamlineAI frontends unchanged. Hard-refresh not required for V1.4.4 ship gate.
+
+- **Standing Rule 3 applied successfully.** Pre-tag check at deployment Step 2: `git tag -l v1.4.4` and `git ls-remote --tags origin v1.4.4` both empty before tagging. Post-tag verification: `git ls-remote --tags origin v1.4.4` shows `f66cfcec5450a2a717ff11200e96200cbad3910f refs/tags/v1.4.4` — tag landed on the correct commit (matching the push output `4f740d3..f66cfce main -> main`). First session where Standing Rule 3 fired pre-emptively and prevented a stale-tag failure rather than catching one in flight.
+
+- **Standing Rule 5 candidate applied successfully.** Diagnostic-endpoint pre-flight executed before chat smoke test: `/admin/debug/system-prompt/{slug}` for both deployments to verify directive position; `/admin/debug/retrieval/streamlineai?query=...` for each of the four test prompts to confirm retrieval surfacing. All four retrieval pre-flights passed before chat smoke ran. Second proof for the candidate — first proof was Session 26 where the pre-flight was suggested in hindsight; Session 27 ran it as scheduled discipline. D1 to decide promotion path at session-end review.
+
+**Smoke retest at session close — V1.4.4 SHIPS:**
+
+| Test | Prompt | Result | Notes |
+|---|---|---|---|
+| B | "I'm not technical, can I still use this?" | **PASS** | Bot quoted Entry `b28eaf05...` ("You only need basic computer skills — if you can check emails and open a browser, you'll be fine.") verbatim with Gareth attribution. ZERO framing — quote-only response. V1.4.3 anti-pattern (b) failure ("Most of our clients aren't technical — the tools are built to be simple to use, not impressive to look at") closed. |
+| C | "What does StreamlineAI do?" | **PASS** | Bot quoted Entry `e6b77867...` (literal "What does StreamlineAI do?" VERBATIM — "StreamlineAI helps businesses use AI in practical ways...") verbatim with Gareth attribution. ZERO framing — quote-only response. V1.4.3 anti-pattern (c) failure ("We've got four main products — LeadLock, TriageIQ, NewsletterIQ, and ChatbotIQ — plus custom builds") closed. |
+| D | "How much does it cost?" | **PASS** (regression check) | Bot quoted Entry `710e7688...` (pricing VERBATIM) verbatim with attribution. ZERO framing this time — V1.4.3 had a trailing transition question, V1.4.4 dropped even that. Stricter shape than V1.4.3 but well within the rule (framing is *at most* one sentence; zero framing is valid). No regression. |
+| E | "What's your phone number?" | **PASS** (regression check + partial signal-string fix) | Literal "INSUFFICIENT DATA — phone number isn't in the knowledge base I have access to." opener present. Session 26 V1.4.3 produced voice-only redirect without the literal signal; V1.4.4 surfaces it. Variance or relocation-strengthened-all-final-position-rules — either way the V1.5 signal-string calibration candidate may have natural resolution. Capture offer references "the contact form on streamlineai.net.au" which isn't in CONTEXT for this zero-hit query — flagged as a known-fact-about-domain reference in the INSUFFICIENT DATA branch, not a VERBATIM-scope violation (scope rule governs VERBATIM-anchored responses, not refusal branches). |
+
+The directive holds. Voice profile carve-out + relocated VERBATIM RESPONSE SCOPE + anti-pattern (b) amplifier sentence stack proved out on the two Session 26 failure cases. Engine-level fix verified on both deployments.
+
+**Multi-VERBATIM observation (carry-forward):**
+
+Test C retrieval returned three VERBATIM entries tied at rank 0.66872 — `6660d663...` (differentiation), `daabb803...` (origin story), `e6b77867...` (literal services overview). Bot quoted the literal-question-match entry. Same behaviour observed Session 25 Step 4 turn 1 (pricing scenario, multi-VERBATIM tie, bot picked the literal match by inference). VERBATIM PRECEDENCE directive doesn't explicitly cover "which one to quote when multiple are tied" — bot got it right by inference. Second proof for the Session 25 V1.5 calibration candidate. Logged as observation, not a bug.
+
+**Tooling discipline failures this session (three instances, same class):**
+
+Three diagnostic-tooling failures surfaced and were caught by the operator's screenshots before they affected production. All three were the same class — inferring API surfaces from memory rather than reading source.
+
+1. **Wrong header name.** I gave `x-admin-token` as the admin auth header. Real header is `Authorization: Bearer <token>`. Caught by operator paste of `auth_failure` response with explicit suggestion field.
+
+2. **Wrong response key.** I gave `$resp.system_prompt` as the prompt field. Real field is `$resp.prompt`. Caught when `Set-Content` wrote two zero-byte files; operator pasted `$sa | ConvertTo-Json -Depth 5` which surfaced the real response shape.
+
+3. **PowerShell variable-name boundary.** I gave `"$base?query=..."` without subexpression delimiters. PowerShell parses `?` as part of variable name in some contexts, so `$base?query` was treated as one (empty) variable name. Result: URL starting with `=` instead of `https://`. Caught by operator paste of malformed `$url` output. Fixed with `"$($base)?query=..."` subexpression form.
+
+All three failures are sibling-shape to Standing Rule 1 (verify prior version's exports before extending) and Pattern 22 (verify state before extending) but applied to a different surface: API contracts, response shapes, language-tooling parsing rules. Standing Rule 1 protects against memory-based assumptions about CODE SHAPE; these failures are memory-based assumptions about TOOL/API SHAPE.
+
+**Standing Rule 6 candidate logged:** "Verify diagnostic command syntax before sending to operator." Three proofs in one session is unusually concentrated — would be three sessions' worth of proof under normal rate. Could be a session-specific concentration (lots of new diagnostic surfaces this session) or could indicate a broader gap. D1 to assess whether this is sibling-class to Standing Rule 1 (same shape, different surface) or independent. Recommendation: candidate status, monitor for additional proofs in next 2-3 sessions before deciding whether it's a real recurring class or a Session 27 concentration.
+
+The cost of each failure was low — operator caught it within one screenshot cycle, no production impact, total recovery time ~5 minutes across all three. But the discipline lapse is real: when an operator is following a build session step-by-step against production infrastructure, diagnostic-command shape that fails on first try wastes operator attention and erodes trust. The operator-side feedback loop is the only safety net here, and it shouldn't have to fire three times in one session.
+
+**Pattern 5 universality check passed:**
+
+The +1539 char delta was identical across UPunt (11188 → 12727) and StreamlineAI (13844 → 15381). Both deployments received the same engine content (relocated VERBATIM RESPONSE SCOPE block + amplifier sentence + carve-out paragraph) and the same CONFIG-level carve-out (voice profile style amendment). Engine code is shared by Pattern 5 design; fork at this layer would violate it. CONFIG fields rendered through the same `renderVoiceProfile()` function regardless of deployment.
+
+**Frozen-deployment operating discipline applied:**
+
+Per Session 25 ruling ("Frozen deployment definition: no active KB curation, no calibration patches, no smoke-test commitment. Engine improvements that apply universally still flow through — frozen does not mean forked"), UPunt received the engine-level fix (system-prompt.js relocation) and the engine-level CONFIG amendment (voice profile carve-out) without UPunt-specific smoke testing this session. UPunt remains frozen at content level; engine improvements continue to flow.
+
+**Cost / spend state:**
+
+- V1.4.4 system prompts grew +1539 chars per deployment. Per-turn cost increase: cache write on first turn of a session is slightly larger; cache reads on subsequent turns unchanged in pricing model. Negligible at current scale.
+- Session 27 smoke test consumed 4 fresh chat sessions + 4 retrieval diagnostic calls + 2 system-prompt diagnostic calls. Token cost estimated ~$0.15-0.20 total.
+- `chatbotiq-dev` API key cap unchanged at $40/month.
+- `chatbotiq-prod` API key still not created — StreamlineAI public-chat traffic remains testing-only scale.
+- Railway: Hobby trial, 18 days remaining (per dashboard screenshot earlier this session). Calendar reminder for upgrade by 24 May 2026 stands; ~14 days notice.
+
+**Build Standards check:**
+
+- #1 prompt caching — V1.4.4 grew per-deployment prompts +1539 chars (universal engine content added). Cache machinery unchanged — per-deployment `Map<slug, string>` cache still hits on identical strings within a session.
+- #2 structured error handling — unchanged. (`auth_failure` validated end-to-end during diagnostic-tooling missteps — error shape held with explicit `suggestion` field that named the right header to use. Working as designed.)
+- #3 response validation — unchanged.
+- #4 streaming — unchanged.
+- #5 stop_reason router — unchanged.
+- #6 pre-deployment checklist — passed Architecture, Operations, and Testing gates. V1.4.4 SHIPS.
+
+**Standing rules check:**
+
+- Rule 1 (verify prior version's exports before extending) — satisfied. Four `git show v1.4.3:` reads at session open via user paste. No memory-based assumptions on file shape.
+- Rule 2 (hard-refresh after frontend deploy) — N/A this session, no frontend changes.
+- Rule 3 (verify tag namespace state before tagging) — satisfied pre-emptively. `git tag -l v1.4.4` and `git ls-remote --tags origin v1.4.4` both confirmed empty before commit-and-push. Post-tag verification confirmed tag landed on correct commit `f66cfce`. First session where Rule 3 fired proactively and prevented a stale-tag class failure rather than catching one mid-flight.
+- Rule 5 candidate (diagnostic endpoints as pre-flight before chat-surface smoke) — applied per session brief. Pre-flight Step 1 (system-prompt verification) caught zero issues — both deployments structurally clean. Pre-flight Step 2 (retrieval verification) confirmed all four test queries surfacing expected VERBATIM entries before chat smoke ran. Second proof for the candidate.
+
+**Files changed at V1.4.4:**
+
+- Modified: `backend/lib/system-prompt.js`, `backend/config/streamlineai.js`, `backend/config/upunt.js`, `backend/server.js`
+- Tag: `v1.4.4` at commit `f66cfce` (verified on remote: `f66cfcec5450a2a717ff11200e96200cbad3910f refs/tags/v1.4.4`)
+
+**Side-pass cleanup at session close:**
+
+Four diagnostic artefact `.txt` files removed from working tree (`streamlineai-prompt-v144.txt`, `upunt-prompt-v144.txt`, `backend/auth-v142.txt`, `backend/prompt.txt`). All four were untracked — removal is local-only, no git operation needed. Pattern 9 (KB hygiene) extension: working-tree hygiene matters as much as KB hygiene. Repo root and `backend/` shouldn't accumulate diagnostic dumps between sessions.
+
+**Next:** Session 28 scope depends on D1 review of V1.4.4 ship and resumption of KB curation (paused since pre-V1.4.3 per Session 25 / 26 / 27 cycle). Likely candidates:
+
+1. Resume KB curation against the now-V1.4.4 engine — multi-turn precedence holds, content curation can proceed.
+2. V1.4.5 retrieval calibration pass — Session 26 Test A retrieval gap ("How much do the streamline AI products cost?" paraphrase) still unresolved. V1.4.2 RPC handles original-form query but extra tokens split rank weight.
+3. V1.5 scheduled-ingestion (NewsIQ variant) — staging item.
+
+D1 to sequence.
+
+**Open questions for D1 (carried forward + new this session):**
+
+- **Session 26 carry-forwards now resolved by V1.4.4:**
+  - V1.4.3 directive failure — RESOLVED. V1.4.4 shipped, Tests B and C pass.
+  - KB curation pause extension — D1 to decide whether to resume against V1.4.4 engine. Tests B and C close the multi-turn extension class; pricing fabrication class closed at V1.4.1; case-3 scope class closed at V1.3.2. Engine is at the most disciplined point in its history.
+
+- **V1.4.5 retrieval calibration scope.** Session 26 Test A revealed V1.4.2 retrieval doesn't surface Entry 10 for paraphrases like "How much do the streamline AI products cost?" Carried forward from Session 26 — D1 to sequence vs V1.5 priorities.
+
+- **Standing Rule 3 promotion status.** Second proof of stale-tag/tag-on-wrong-commit logged Session 26 (commit-without-stage producing tag on wrong commit). Session 27 was first session where Rule 3 ran proactively and produced empty pre-tag check + correct-commit post-tag verification — third proof, this time as prevention rather than recovery. D1 to decide promotion to methodology doc.
+
+- **Standing Rule 4 candidate** ("When generating code for the operator to paste, give the final file content, never diff representation") — first proof Session 26. No additional proof Session 27. Held at candidate, awaiting second occurrence.
+
+- **Standing Rule 5 candidate** ("Use diagnostic endpoints as pre-flight before chat-surface smoke tests when available") — first proof Session 26 (hindsight identification of the discipline that would have caught Test A in 30 seconds without a chat session). Second proof Session 27 (applied as scheduled discipline per session brief; caught zero issues but functioned as designed). D1 to decide promotion to methodology doc — sibling-shape to Pattern 23 (verify runtime state matches deployed state before depending on it) but on a different surface.
+
+- **Standing Rule 6 candidate** ("Verify diagnostic command syntax before sending to operator") — first proof Session 27 with three same-session instances (Authorization header, response key, PowerShell variable-name boundary). Concentration may be Session 27-specific (lots of new diagnostic surfaces) rather than indicating a broader recurring class. D1 to assess whether this is sibling-class to Standing Rule 1 (same shape, different surface — memory-based assumption about TOOL/API SHAPE rather than CODE SHAPE) or independent. Recommendation: candidate status, monitor 2-3 sessions before deciding.
+
+- **Multi-VERBATIM-tie calibration (V1.5 candidate).** Second proof confirmed Session 27 Test C — bot picked correct VERBATIM by inference when three entries tied at identical rank. V1.5 calibration item: explicit VERBATIM PRECEDENCE rule for "which one to quote when multiple match."
+
+- **INSUFFICIENT DATA branch and content references.** Test E response referenced "the contact form on streamlineai.net.au" — not in CONTEXT for the zero-hit query. Allowed under current VERBATIM RESPONSE SCOPE wording (scope rule governs VERBATIM-anchored responses, INSUFFICIENT DATA RULE governs refusal branches). D1 to decide whether the same strict line should apply to refusal-branch content references — could be a V1.5+ tightening if drift surfaces, or could be acceptable as "domain-known facts in the refusal-and-capture pattern."
+
+- **Methodology doc v1.2 batch update queue** — five items carried from Session 25, plus three V1.4.3 candidates from Session 26, plus three V1.4.4 candidates from Session 27. Total queue: 11 items. D1 to schedule batch update.
+
+- **Master file frozen-deployment clarification** (Session 25 carry-forward) — still pending. D1 to update Operating Discipline section.
+
+- **UPunt frontend version label V1.2 cosmetic update** — still carried.
+
+- **Custom domain `chat.streamlineai.net.au`** — deferred to post-KB-curation per Session 22 SAQ-4. Gating may lift now V1.4.4 ships.

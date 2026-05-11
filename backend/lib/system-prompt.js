@@ -1,113 +1,114 @@
 // backend/lib/system-prompt.js
 //
-// V1.4.3 — Multi-turn / extended-response VERBATIM precedence tightening.
-// Universal fix applied to all deployments.
+// V1.4.4 — VERBATIM RESPONSE SCOPE block relocated to sit AFTER the voice
+// profile in the cached system prompt. Voice profile carve-out lives in
+// CONFIG (streamlineai.js, upunt.js) — see each deployment's voice_profile.style.
 //
-// Surfaced by Session 25 V1.4.2 smoke test:
+// Surfaced by Session 26 V1.4.3 smoke test:
 //
-//   Bot quotes VERBATIM correctly on the initial response and on single-turn
-//   questions. On multi-turn follow-up where the user asks an adjacent
-//   question, bot quotes the KB content correctly but extends with
-//   synthesised supportive content not in any KB entry. Three observed
-//   instances:
+//   V1.4.3 directive was provably present in the deployed prompt (verified
+//   via /admin/debug/system-prompt/streamlineai). Retrieval correctly
+//   surfaced the VERBATIM entries for Tests B and D. Model read the rule,
+//   read the entry, quoted correctly — then extended the quote on Tests B
+//   and C with content explicitly named-and-forbidden by the live directive.
 //
-//     Step 4 turn 2 ("How much do the streamline AI products cost?"): bot
-//     quoted Entry 10 (pricing VERBATIM) then added "ChatbotIQ A$297/mo
-//     retainer" (fabricated value), "complexity, integrations, how much
-//     training data you've got" (synthesised supporting content), "Most
-//     deployments land in the lower half of those ranges" (synthesised
-//     supporting content).
+//   Test B ("I'm not technical, can I still use this?"): Entry 19 quoted
+//   verbatim, then extended with anti-pattern (b) — synthesised supportive
+//   prose ("Most of our clients aren't technical — the tools are built to
+//   be simple to use, not impressive to look at"). No fabricated values,
+//   no trace to CONTEXT. Forbidden by V1.4.3 directive. Generated anyway.
 //
-//     Step 5 ("I'm not technical, can I still use this?"): bot quoted
-//     Entry 19 cleanly then appended "Most of what we build sits in the
-//     background and just works. You're not managing code or configuring
-//     anything technical — you'll interact with the tools the same way
-//     you'd use any other web app." None of this in any KB entry — generic
-//     supportive prose, no fabricated values.
+//   Test C ("What does StreamlineAI do?"): Entry 1 quoted verbatim, then
+//   extended with anti-pattern (c) — "what this means in practice"
+//   elaboration introducing product names not in this CONTEXT block.
+//   Forbidden by V1.4.3 directive. Generated anyway.
 //
-//     Step 6 ("What does StreamlineAI do?"): minor REFERENCE-style
-//     extension after Entry 1 quote. Voice-profile-shaped, domain-bounded,
-//     flagged as same shape lower severity.
+//   Test D ("How much does it cost?"): Entry 10 quoted verbatim, trailing
+//   "What kind of business are you running?" — content-free transition,
+//   passes V1.4.3 shape (2). Pricing has a definitive numeric answer with
+//   no tonal pull to extend. Single-turn pricing control clean.
 //
-// Gap in V1.4.1 VERBATIM PRECEDENCE block: governed substitution (don't
-// replace VERBATIM with something else) and alteration (don't paraphrase
-// the quoted material), but did NOT constrain the SCOPE of a VERBATIM-
-// anchored response. Bot was free to quote correctly and then keep writing
-// — drawing extension content from voice profile, general knowledge, or
-// inference — as long as it didn't fabricate a specific value and didn't
-// substitute the quote. V1.4.1 NEVER FABRICATE caught only one of the three
-// failure shapes (Step 4 turn 2's "$297/mo"). Steps 5 and 6 passed every
-// V1.4.1 rule because they contained no fabricated values.
+// Structural diagnosis (Session 26 handback to D1):
 //
-// V1.4.3 changes:
+//   Voice profile's "Acknowledge the prospect's situation back to them in
+//   your own words before answering" instruction tensions against VERBATIM
+//   RESPONSE SCOPE. Voice profile was placed last in the cached block per
+//   Pattern 8 (attention-weighting — models attend most strongly to
+//   information near the end). VERBATIM RESPONSE SCOPE was placed in the
+//   middle of the prompt, embedded in KB BEHAVIOUR. Same Pattern 8 logic
+//   running in the wrong direction: the rule is far from response position,
+//   the voice instruction is near response position, voice instruction wins.
 //
-//   1. New VERBATIM RESPONSE SCOPE directive inserted between VERBATIM
-//      PRECEDENCE and NEVER FABRICATE. Constrains the response shape when
-//      a VERBATIM quote anchors the response: quoted material plus, at
-//      most, a strict framing sentence. Strict framing is defined as
-//      either (a) content drawn from another entry in the same CONTEXT
-//      block, or (b) a content-free transition phrase that names the
-//      source. No synthesised framing of any other shape qualifies.
+//   Test D passes because pricing has no tonal pull to extend. Tests B and C
+//   answer questions where there's natural pull to elaborate ("can I still
+//   use this?" wants reassurance; "what does StreamlineAI do?" wants
+//   description). The voice profile's "acknowledge in your own words"
+//   instruction is read as license to extend; the V1.4.3 directive's
+//   "framing must trace to CONTEXT" rule is forgotten by then.
 //
-//   2. Three named anti-patterns enumerated, mirroring the three Session 25
-//      failure shapes by behaviour (not by quoting the failed responses):
-//      (a) extending with fabricated specific values, (b) extending with
-//      synthesised supportive prose containing no fabricated values,
-//      (c) extending with "what this means in practice" / elaboration /
-//      clarification not present in CONTEXT.
+// V1.4.4 changes (D1 Session 27 decision — Option 1 + Option 2 combined):
 //
-//   3. Multi-turn invariance stated explicitly. Turn 2 does not get a
-//      relaxation. Each turn re-retrieves; each turn that hits a VERBATIM
-//      entry applies the same scope rule. The Session 25 failures all
-//      occurred on follow-up turns where the model behaved as if having
-//      already cited the quote earlier in the conversation entitled it to
-//      paraphrase or extend on the follow-up. Closed explicitly.
+//   1. VERBATIM RESPONSE SCOPE block RELOCATED out of the KB BEHAVIOUR
+//      section and placed as a new top-level section AFTER the voice
+//      profile. The block sits last in the cached prompt, so the same
+//      Pattern 8 attention-weighting that previously favoured the voice
+//      instruction now favours the scope rule.
 //
-// Rationale for strict framing (D1 SAQ decision Session 26):
+//   2. Voice profile carve-out applied in CONFIG (streamlineai.js,
+//      upunt.js). The "acknowledge in your own words" instruction in each
+//      style field gets a trailing exception sentence naming VERBATIM-from-
+//      CONTEXT as the case where acknowledgement is content-free transition
+//      only. Engine-side directive vocabulary inside operator-curated
+//      voice profile content is a documented Pattern 5 trade — D1 owns the
+//      CONFIG field, D1 approves the wording, precision wins over softer
+//      language (Pattern 11 — vague permissive scope gets read liberally).
 //
-//   Moderate framing ("OK if it restates the user's question or names the
-//   source — no new factual content") is precisely the latitude the model
-//   already took on Step 5. The Step 5 extension would pass a moderate test
-//   — a permissive reader classifies it as "framing the answer." Strict
-//   framing closes that loophole: framing is either pulled from another
-//   CONTEXT entry (verifiable source) or is a content-free transition (no
-//   factual surface to drift on). Both auditable. Pattern 24 (methodology
-//   doc, "Permissive rules require concrete scope") directly applies —
-//   vague permissive scope gets read liberally under model interpretation
-//   pressure.
+// V1.4.3 substantive content preserved verbatim:
 //
-// Rationale for named anti-patterns (D1 SAQ decision Session 26):
+//   - Strict framing shapes (1) and (2)
+//   - Three named anti-patterns (a), (b), (c)
+//   - Multi-turn invariance clause
+//   - VERBATIM PRECEDENCE substitution rule (stays in KB BEHAVIOUR)
+//   - NEVER FABRICATE SPECIFIC FACTUAL VALUES rule (stays in KB BEHAVIOUR)
 //
-//   Three observed instances, three distinct shapes, one of which (Step 5
-//   supportive prose) is not covered by any rule before V1.4.3. Abstract
-//   principle plus model interpretation is what failed at V1.3, V1.3.1,
-//   V1.3.2 case-3, and Session 24. The V1.3.2 case-3 fix that held used
-//   concrete worked exclusions; V1.4.3 mirrors that approach. Prompt cost
-//   ~5 lines, failure cost a V1.4.4 patch session.
+// What stays in KB BEHAVIOUR after V1.4.4:
 //
-// V1.4.2 baseline preserved otherwise: VERBATIM PRECEDENCE directive
-// (substitution rule), NEVER FABRICATE SPECIFIC FACTUAL VALUES, case-3
-// scope tightening with extended exclusion list, anti-hybrid rule, turn-
-// level refusal rule, voice profile rendering, RAG-style context block
-// separate.
+//   - REFERENCE vs VERBATIM rendering rules
+//   - VERBATIM PRECEDENCE (substitution rule — independent of scope rule)
+//   - NEVER FABRICATE SPECIFIC FACTUAL VALUES (independent of scope rule)
+//   - Empty-CONTEXT fallback to INSUFFICIENT DATA
 //
-// Architecture (unchanged from V1.2):
+//   These are CONTENT-handling rules (what to quote, what not to invent).
+//   They belong in KB BEHAVIOUR.
 //
-//   CACHED BLOCK (stable across all turns of all sessions for this deployment):
-//     - Identity (deployment_name, domain)
-//     - KB rendering rules (REFERENCE vs VERBATIM behaviour, V1.4.3 extended)
-//     - INSUFFICIENT DATA rule (V1.4.1 strengthened)
-//     - Hard guardrails
-//     - Voice profile (V1.4 — six fields)
+// What moves to its own dedicated section last in the prompt:
 //
-//   DYNAMIC CONTEXT BLOCK (varies per turn — sent as user-side context, NOT in system prompt):
-//     - Retrieved KB entries for this query
+//   - VERBATIM RESPONSE SCOPE — the SHAPE rule for VERBATIM-anchored responses.
 //
-// Pattern 11 (methodology, formerly Pattern 24): "Permissive rules require
-// concrete scope." Fourth instance confirmed Session 25 (multi-turn VERBATIM
-// extension drift). V1.4.3 extends the concrete-scope discipline to response-
-// shape constraints around VERBATIM quotes, not just question-type
-// classification.
+//   This is a RESPONSE-shape rule (how long the response is, what its
+//   components are). It belongs near the response position so attention-
+//   weighting works for it, not against it.
+//
+// Architecture (cached block order at V1.4.4):
+//
+//   1. Identity (deployment_name, domain)
+//   2. KB rendering rules (REFERENCE/VERBATIM behaviour, VERBATIM PRECEDENCE,
+//      NEVER FABRICATE) — content rules
+//   3. INSUFFICIENT DATA rule
+//   4. Hard guardrails
+//   5. Voice profile (six fields including carve-out in style)
+//   6. VERBATIM RESPONSE SCOPE — NEW LAST POSITION
+//
+// Pattern 8 (methodology, attention-weighting): information near the end of
+// the prompt is attended to most strongly. V1.4.3 placed voice profile last
+// for that reason. V1.4.4 keeps voice profile near the end but places the
+// scope rule AFTER it — the rule that the voice profile must yield to is
+// the rule the model encounters last, immediately before generating.
+//
+// Pattern 11 (methodology, permissive rules require concrete scope): the
+// scope rule's strict framing shapes (1) and (2) and three named anti-
+// patterns are unchanged from V1.4.3 — precision wording is preserved, only
+// position changes.
 
 /**
  * Build the cached system prompt from CONFIG.
@@ -130,7 +131,11 @@ export function buildSystemPrompt(config) {
   // ----- KB rendering rules (Pattern 1 — Reference vs Verbatim Separation) -----
   // V1.4.1: VERBATIM precedence and anti-fabrication directives strengthened.
   // V1.4.3: VERBATIM RESPONSE SCOPE directive added between precedence and
-  // anti-fabrication. Constrains response shape around VERBATIM quotes.
+  //   anti-fabrication. Constrained response shape around VERBATIM quotes.
+  // V1.4.4: VERBATIM RESPONSE SCOPE relocated OUT of this section to a
+  //   dedicated final section after voice profile (see end of function).
+  //   VERBATIM PRECEDENCE (substitution rule) and NEVER FABRICATE (content
+  //   rule) remain here — they govern CONTENT, not response SHAPE.
   sections.push(
     `KNOWLEDGE BASE BEHAVIOUR\n` +
     `\n` +
@@ -156,51 +161,6 @@ export function buildSystemPrompt(config) {
     `a stylistically similar example_message for a VERBATIM entry that covers ` +
     `the user's question.\n` +
     `\n` +
-    `VERBATIM RESPONSE SCOPE: When a VERBATIM entry covers the user's question ` +
-    `and you are quoting it, your response consists of: the verbatim quote ` +
-    `(with attribution), and at most one short framing sentence before or ` +
-    `after the quote. Framing is strictly limited to one of two shapes:\n` +
-    `\n` +
-    `  (1) Content drawn from another entry in the same CONTEXT block. If ` +
-    `the framing makes a factual claim, that claim must trace to a specific ` +
-    `entry currently in the CONTEXT block — REFERENCE or VERBATIM.\n` +
-    `\n` +
-    `  (2) A content-free transition phrase that names the source or restates ` +
-    `the question topic, carrying no factual content of its own. Examples: ` +
-    `"Here's what the source says about that:"; "On pricing —"; "Gareth's ` +
-    `take on this:".\n` +
-    `\n` +
-    `Any framing that does not fit one of these two shapes is forbidden. ` +
-    `Specifically, do not extend a VERBATIM quote with any of the following:\n` +
-    `\n` +
-    `  (a) Fabricated specific values — numbers, dates, quantities, prices, ` +
-    `percentages, names, or identifiers that are not present in the CONTEXT ` +
-    `block. This is forbidden even if the values are plausible or consistent ` +
-    `with the quoted material.\n` +
-    `\n` +
-    `  (b) Synthesised supportive prose — sentences of reassurance, ` +
-    `encouragement, clarification, or context that contain no fabricated ` +
-    `specific values but also do not trace to any entry in the CONTEXT block. ` +
-    `Generic supportive content drawn from general knowledge or inference is ` +
-    `forbidden even when it sounds helpful and contains no specific factual ` +
-    `claims.\n` +
-    `\n` +
-    `  (c) "What this means in practice" elaboration — sentences that ` +
-    `explain, expand, clarify, or apply the quoted material in ways the ` +
-    `CONTEXT does not. If the source did not say it, do not extend the ` +
-    `quote to say it. If the user wants elaboration, they will ask a ` +
-    `follow-up question, which will retrieve fresh CONTEXT.\n` +
-    `\n` +
-    `This rule is invariant across turns. Turn 2 does not get a relaxation ` +
-    `because turn 1 already cited the source. Each turn re-retrieves; each ` +
-    `turn that hits a VERBATIM entry applies the same scope rule. If the ` +
-    `user's follow-up question is genuinely adjacent (e.g. user asked about ` +
-    `pricing on turn 1, then asks about delivery timeframes on turn 2), the ` +
-    `new turn either hits a different KB entry (use that, apply scope rule ` +
-    `again) or hits nothing relevant (apply INSUFFICIENT DATA below). It ` +
-    `does not entitle you to extend the turn-1 quote with synthesised turn-2 ` +
-    `content.\n` +
-    `\n` +
     `NEVER FABRICATE SPECIFIC FACTUAL VALUES: Do not invent prices, dates, ` +
     `quantities, percentages, names, contact details, identifiers, product ` +
     `specifications, or any other specific factual value that is not present ` +
@@ -212,7 +172,12 @@ export function buildSystemPrompt(config) {
     `\n` +
     `When a CONTEXT block is empty or contains nothing relevant to the user's ` +
     `question, do not invent an answer from general knowledge. Apply the ` +
-    `INSUFFICIENT DATA rule below.`
+    `INSUFFICIENT DATA rule below.\n` +
+    `\n` +
+    `The VERBATIM RESPONSE SCOPE rules at the end of this prompt govern the ` +
+    `SHAPE of a VERBATIM-anchored response (how long it is, what framing is ` +
+    `permitted). Those rules apply whenever you quote a VERBATIM entry — read ` +
+    `them before generating any response that includes a VERBATIM quote.`
   );
 
   // ----- INSUFFICIENT DATA rule (Pattern 3) -----
@@ -278,13 +243,94 @@ export function buildSystemPrompt(config) {
   }
 
   // ----- Voice profile (V1.4 — full rendering) -----
-  // Placed last in the cached block so the model attends to it most strongly.
+  // V1.4: placed last in the cached block so the model attends to it strongly.
+  // V1.4.4: voice profile is no longer the final section — VERBATIM RESPONSE
+  //   SCOPE follows it (see next push). Voice profile remains near the end,
+  //   immediately before the scope rule. The rule the voice profile must
+  //   yield to is the rule the model encounters last.
   // All six voice fields rendered if populated. Each field rendered only if
   // it has content — empty arrays/strings are skipped, not echoed as headers.
   const voiceSection = renderVoiceProfile(config.voice_profile);
   if (voiceSection) {
     sections.push(voiceSection);
   }
+
+  // ----- VERBATIM RESPONSE SCOPE (V1.4.4 — relocated last position) -----
+  // V1.4.3 substantive content preserved verbatim. Position changed from
+  // middle-of-KB-BEHAVIOUR to dedicated final section.
+  //
+  // Rationale (D1 Session 27 decision Option 1):
+  //   Voice profile's "Acknowledge the prospect's situation back to them in
+  //   your own words" instruction was being read as license to extend
+  //   VERBATIM-anchored responses with synthesised supportive prose. Pattern 8
+  //   attention-weighting favoured voice profile (last in V1.4.3) over scope
+  //   rule (middle in V1.4.3). V1.4.4 places the scope rule LAST so the
+  //   attention-weighting runs in its favour. Voice profile carve-out
+  //   (Option 2, in CONFIG style fields) reinforces from the voice side.
+  sections.push(
+    `VERBATIM RESPONSE SCOPE\n` +
+    `\n` +
+    `This rule applies whenever a VERBATIM entry from the CONTEXT block ` +
+    `covers the user's question and you are quoting it. The rule is the ` +
+    `last rule in this prompt deliberately — it takes precedence over the ` +
+    `voice profile's stylistic instructions whenever the two would produce ` +
+    `different response shapes.\n` +
+    `\n` +
+    `When a VERBATIM entry covers the user's question and you are quoting ` +
+    `it, your response consists of: the verbatim quote (with attribution), ` +
+    `and at most one short framing sentence before or after the quote. ` +
+    `Framing is strictly limited to one of two shapes:\n` +
+    `\n` +
+    `  (1) Content drawn from another entry in the same CONTEXT block. If ` +
+    `the framing makes a factual claim, that claim must trace to a specific ` +
+    `entry currently in the CONTEXT block — REFERENCE or VERBATIM.\n` +
+    `\n` +
+    `  (2) A content-free transition phrase that names the source or restates ` +
+    `the question topic, carrying no factual content of its own. Examples: ` +
+    `"Here's what the source says about that:"; "On pricing —"; "Gareth's ` +
+    `take on this:".\n` +
+    `\n` +
+    `Any framing that does not fit one of these two shapes is forbidden. ` +
+    `Specifically, do not extend a VERBATIM quote with any of the following:\n` +
+    `\n` +
+    `  (a) Fabricated specific values — numbers, dates, quantities, prices, ` +
+    `percentages, names, or identifiers that are not present in the CONTEXT ` +
+    `block. This is forbidden even if the values are plausible or consistent ` +
+    `with the quoted material.\n` +
+    `\n` +
+    `  (b) Synthesised supportive prose — sentences of reassurance, ` +
+    `encouragement, clarification, or context that contain no fabricated ` +
+    `specific values but also do not trace to any entry in the CONTEXT block. ` +
+    `Generic supportive content drawn from general knowledge or inference is ` +
+    `forbidden even when it sounds helpful and contains no specific factual ` +
+    `claims. This is the most commonly violated rule: voice profile ` +
+    `instructions to "acknowledge in your own words" do NOT override this ` +
+    `constraint when a VERBATIM entry anchors the response.\n` +
+    `\n` +
+    `  (c) "What this means in practice" elaboration — sentences that ` +
+    `explain, expand, clarify, or apply the quoted material in ways the ` +
+    `CONTEXT does not. If the source did not say it, do not extend the ` +
+    `quote to say it. If the user wants elaboration, they will ask a ` +
+    `follow-up question, which will retrieve fresh CONTEXT.\n` +
+    `\n` +
+    `Voice profile precedence carve-out: the voice profile's style ` +
+    `instructions (acknowledging the user's situation, matching tone, using ` +
+    `signature phrases) apply fully on responses that are NOT VERBATIM-` +
+    `anchored. On VERBATIM-anchored responses, the scope rule above ` +
+    `overrides voice instructions that would expand the response beyond ` +
+    `the quote plus permitted framing. The voice still shapes the framing ` +
+    `sentence itself — the framing sentence sounds like the voice — but it ` +
+    `does not license additional sentences of synthesised content.\n` +
+    `\n` +
+    `This rule is invariant across turns. Turn 2 does not get a relaxation ` +
+    `because turn 1 already cited the source. Each turn re-retrieves; each ` +
+    `turn that hits a VERBATIM entry applies the same scope rule. If the ` +
+    `user's follow-up question is genuinely adjacent (e.g. user asked about ` +
+    `pricing on turn 1, then asks about delivery timeframes on turn 2), the ` +
+    `new turn either hits a different KB entry (use that, apply scope rule ` +
+    `again) or hits nothing relevant (apply INSUFFICIENT DATA). It does not ` +
+    `entitle you to extend the turn-1 quote with synthesised turn-2 content.`
+  );
 
   return sections.join('\n\n');
 }

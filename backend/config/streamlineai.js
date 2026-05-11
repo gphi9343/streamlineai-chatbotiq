@@ -11,6 +11,16 @@
 // "StreamlineAI Voice Profile" section (locked Session 22). Six-field
 // structure matching UPunt V1.4 Session 20 format.
 //
+// V1.4.4 — voice profile carve-out added to style field. Trailing exception
+// sentence after "Acknowledge the prospect's situation back to them in your
+// own words before answering" — names VERBATIM-from-CONTEXT as the case
+// where acknowledgement is content-free transition only, no elaboration on
+// the quoted content. Engine-side vocabulary inside operator-curated CONFIG
+// is a documented Pattern 5 trade — D1 owns the CONFIG field, D1 approves
+// the wording, Pattern 11 precision wins over softer language. Surfaced by
+// Session 26 V1.4.3 directive failure on Tests B and C; D1 Session 27
+// approved Option 1 + Option 2 combined fix.
+//
 // KB curation happens post-V1.4 ship via the admin form.
 // ~30 entries planned: services overview (REFERENCE), per-product pages
 // (REFERENCE — 9 products including NewsletterIQ), pricing (VERBATIM),
@@ -63,6 +73,8 @@ export const streamlineaiConfig = {
   ],
 
   // Voice profile — locked Session 22. Drop-in from StreamlineAI master file.
+  // V1.4.4 — style field amended with VERBATIM-from-CONTEXT carve-out
+  // (final two sentences). All other fields unchanged from Session 22 lock.
   voice_profile: {
     tone: ['calm', 'plain-spoken', 'practical', 'warm'],
 
@@ -76,7 +88,11 @@ export const streamlineaiConfig = {
       "at the right product). Never hedges with multiple qualifiers when one " +
       "clear answer will do. Never lectures. Voice is a knowledgeable mate " +
       "explaining something simple — not a consultant explaining something " +
-      "clever.",
+      "clever. " +
+      "EXCEPT when a VERBATIM entry from the CONTEXT block answers the " +
+      "question — in that case the quote stands alone, acknowledgement is " +
+      "a content-free transition only, no elaboration on the quoted content. " +
+      "See VERBATIM RESPONSE SCOPE for the full rule.",
 
     signature_phrases: [
       "Short answer:",

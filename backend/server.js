@@ -1,8 +1,19 @@
 // backend/server.js
 //
-// V1.4.3 — Patch increment. Multi-turn VERBATIM precedence tightening
-// (system-prompt.js) + kb.js doc-comment cleanup. No server.js
-// behaviour change.
+// V1.4.4 — Patch increment. VERBATIM RESPONSE SCOPE block relocated to sit
+// AFTER voice profile in cached system prompt (system-prompt.js). Voice
+// profile carve-out added to style field in both deployments' CONFIG
+// (streamlineai.js, upunt.js). No server.js behaviour change — version
+// label bump only.
+//
+// Surfaced by Session 26 V1.4.3 smoke test (Tests B and C failed on
+// directive despite live presence in deployed prompt). D1 Session 27
+// decision: Option 1 + Option 2 combined — relocate the rule, amend the
+// voice profile, reinforce from both sides.
+//
+// V1.4.3 patch scope (in other files):
+//   - lib/system-prompt.js: VERBATIM RESPONSE SCOPE directive added between
+//     VERBATIM PRECEDENCE and NEVER FABRICATE in KB rendering rules.
 //
 // V1.4.2 patch scope (in other files):
 //   - lib/kb.js: retrieval switched from .textSearch() to RPC call to
@@ -62,7 +73,7 @@ const app = express();
 app.use(express.json({ limit: '32kb' }));
 
 // ----------------------------------------------------------------
-// CORS — V1.3 allow-list shape (unchanged at V1.4 / V1.4.1 / V1.4.2 / V1.4.3)
+// CORS — V1.3 allow-list shape (unchanged at V1.4 / V1.4.1 / V1.4.2 / V1.4.3 / V1.4.4)
 // ----------------------------------------------------------------
 // Read ALLOWED_ORIGINS (plural, comma-separated) as the canonical var.
 // Fall back to ALLOWED_ORIGIN (singular, V1.4 var) for backwards-compat.
@@ -151,7 +162,7 @@ app.get('/health', (_req, res) => {
 
   res.json({
     status: 'ok',
-    version: '1.4.3',
+    version: '1.4.4',
     deployments,
     cors_allowed_origins: ALLOWED_ORIGINS,
     timestamp: new Date().toISOString(),
@@ -334,7 +345,7 @@ app.post('/chat', async (req, res) => {
 prebuildAllPrompts();
 
 app.listen(PORT, () => {
-  console.log(`[chatbotiq] V1.4.3 listening on :${PORT}`);
+  console.log(`[chatbotiq] V1.4.4 listening on :${PORT}`);
   for (const { slug, display_name } of listDeployments()) {
     const prompt = SYSTEM_PROMPT_CACHE.get(slug);
     const chars = prompt ? prompt.length : 0;

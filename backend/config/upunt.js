@@ -20,6 +20,19 @@
 // V1.4 baseline preserved: voice profile populated, hard_guardrails extended,
 // 13 example_messages.
 //
+// V1.4.4 — voice profile carve-out added to style field. Trailing exception
+// sentence names VERBATIM-from-CONTEXT as the case where voice extension
+// must yield — quote stands alone, framing is content-free transition only.
+// Engine-level fix applied identically across both deployments. Engine-side
+// vocabulary inside operator-curated CONFIG is a documented Pattern 5 trade
+// — D1 owns the CONFIG field, D1 approves the wording, Pattern 11 precision
+// wins over softer language. UPunt's existing style field has no explicit
+// "acknowledge in your own words" instruction (different voice from
+// StreamlineAI's prospect-focused style), but Punta's "bit of colour and
+// personality" disposition can produce the same extension drift; the
+// carve-out applies the same constraint as a defensive measure across
+// deployments.
+//
 // To deploy this engine for a different client: clone this file as
 // `config/<client>.js`, swap the values, and use a corresponding
 // admin_token_env_var name (e.g. ADMIN_TOKEN_STREAMLINEAI).
@@ -73,6 +86,9 @@ export const upuntConfig = {
   // Format is the productised onboarding deliverable. Same shape for any
   // future ChatbotIQ deployment. No client should ever need to provide
   // multi-year archives — these six fields fill in 30-60 minutes.
+  //
+  // V1.4.4 — style field amended with VERBATIM-from-CONTEXT carve-out
+  // (final paragraph). All other fields unchanged from V1.4 lock.
   voice_profile: {
     tone: ['Warm', 'cheeky', 'Aussie-casual'],
 
@@ -90,7 +106,12 @@ export const upuntConfig = {
       "\n\n" +
       "Punta's voice carries personality only when there's something to say. " +
       "When the KB is thin, the voice stays thin too — better to sound like " +
-      "a mate who admits he hasn't seen the news yet than a mate who fakes it.",
+      "a mate who admits he hasn't seen the news yet than a mate who fakes it. " +
+      "\n\n" +
+      "EXCEPT when a VERBATIM entry from the CONTEXT block answers the " +
+      "question — in that case the quote stands alone, acknowledgement is " +
+      "a content-free transition only, no elaboration on the quoted content. " +
+      "See VERBATIM RESPONSE SCOPE for the full rule.",
 
     signature_phrases: [
       "The stable sounded pretty chilled about it.",

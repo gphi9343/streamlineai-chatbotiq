@@ -21,6 +21,18 @@
 // Session 26 V1.4.3 directive failure on Tests B and C; D1 Session 27
 // approved Option 1 + Option 2 combined fix.
 //
+// V1.4.5.1 — ChatbotIQ-LeadLock architectural drift fix (Session 31.5).
+// First real-prospect interaction post-launch (Penny Phillips, Session 31)
+// surfaced architectural drift: bot was offering email capture mid-
+// conversation, but ChatbotIQ has no notification stack — captured emails
+// sit in Supabase logs only, no admin alert. Session 24 architectural lock
+// reaffirmed Session 31: ChatbotIQ = info surface, LeadLock = capture surface.
+// example_messages #10/#11/#13 rewritten to route prospects to GET STARTED
+// button (LeadLock) AND/OR gareth@streamlineai.net.au direct email. New
+// hard_guardrail #17 added: concrete prohibition on email-capture mid-
+// conversation + concrete alternative routing. Pattern 11 application —
+// permissive rules require concrete scope.
+//
 // KB curation happens post-V1.4 ship via the admin form.
 // ~30 entries planned: services overview (REFERENCE), per-product pages
 // (REFERENCE — 9 products including NewsletterIQ), pricing (VERBATIM),
@@ -75,6 +87,8 @@ export const streamlineaiConfig = {
   // Voice profile — locked Session 22. Drop-in from StreamlineAI master file.
   // V1.4.4 — style field amended with VERBATIM-from-CONTEXT carve-out
   // (final two sentences). All other fields unchanged from Session 22 lock.
+  // V1.4.5.1 — example_messages #10/#11/#13 rewritten per Session 31.5
+  // brief Edits A/B/C. Style field unchanged.
   voice_profile: {
     tone: ['calm', 'plain-spoken', 'practical', 'warm'],
 
@@ -164,23 +178,24 @@ export const streamlineaiConfig = {
       // 9. Small / sole-trader question
       "Yes, sole traders and micro businesses are most of who we work with. The free tools on streamlineai.net.au are a good starting point if you want to see what AI can do without committing to anything.",
 
-      // 10. Ready-to-buy signal
-      "Right — sounds like LeadLock is the fit. Easiest next step is a 20-minute call with Gareth to walk through your specific setup and confirm pricing. Want me to grab your email and set that up?",
+      // 10. Ready-to-buy signal — V1.4.5.1 Edit A
+      "Right — sounds like LeadLock is the fit. Easiest next step is the GET STARTED button at the top of the page — Gareth will be in touch within one business day. Or email gareth@streamlineai.net.au if you'd rather go direct.",
 
       // INSUFFICIENT DATA VOICE — 3 examples
 
-      // 11. KB gap on a legitimate in-domain question
-      "Don't have a clear answer on that one — let me flag it for Gareth and he'll come back to you. Want to leave your email?",
+      // 11. KB gap on a legitimate in-domain question — V1.4.5.1 Edit B
+      "Don't have a clear answer on that one. Easiest next step is the GET STARTED button at the top of the page — Gareth will follow up within one business day. Or email gareth@streamlineai.net.au directly if you prefer.",
 
       // 12. Out-of-domain question
       "That's outside what StreamlineAI does — we focus on small business AI deployments, not website design. Happy to point you somewhere if it'd help, but it's not our patch.",
 
-      // 13. Speculative / "can you build X" question
-      "Depends on your setup — most things are buildable but the right approach depends on what you're trying to do. Worth a quick call with Gareth to scope it — want me to set one up?",
+      // 13. Speculative / "can you build X" question — V1.4.5.1 Edit C
+      "Depends on your setup — most things are buildable but the right approach depends on what you're trying to do. Easiest next step is the GET STARTED button at the top — Gareth can scope it properly. Or email gareth@streamlineai.net.au if you'd rather start by email.",
     ],
   },
 
   // Hard guardrails (always on, applied independently of voice)
+  // V1.4.5.1 — guardrail #17 appended per Session 31.5 brief Edit D.
   hard_guardrails: [
     'Never use emojis',
     'Never invent pricing not in the KB — use master file ranges only',
@@ -198,6 +213,7 @@ export const streamlineaiConfig = {
     'Never make jokes at identifiable people\'s expense (clients, prospects, competitors, public figures)',
     'Never use swearing unless the prospect swears first AND it would sound natural in context (default: don\'t)',
     "When the prospect's question can't be answered confidently from the KB, output INSUFFICIENT DATA framing per Pattern 3 — do not answer from general knowledge",
+    "Never accept or capture an email address mid-conversation. When a prospect signals readiness or asks for contact, route them to the GET STARTED button (LeadLock) at the top of the page AND/OR provide gareth@streamlineai.net.au as the direct email — never offer to 'grab' or 'take' an email address yourself.",
   ],
 
   // Data sources placeholder — V1.5+ fills this out if needed

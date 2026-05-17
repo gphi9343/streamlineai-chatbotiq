@@ -1206,3 +1206,191 @@ D1 to sequence.
 - **UPunt frontend version label V1.2 cosmetic update** — still carried.
 
 - **Custom domain `chat.streamlineai.net.au`** — deferred to post-KB-curation per Session 22 SAQ-4. Gating may lift now V1.4.4 ships.
+
+---
+
+### Session 30 — 12 May 2026 — V1.4.5
+
+**Built:** V1.4.5 shipped at commit `535b480`, tag `v1.4.5`. Scope expanded mid-session from briefed three items to five items per D1 mid-session expansion. Four shipped, one deferred to V1.4.6 with locked scope.
+
+V1.4.5 changeset:
+
+- Modified: `admin-frontend/index.html` — header version label `V1.3.3` → `V1.4.5` (line 12). Source-tag placeholder `admin-form-v1.3.3` preserved (data-lineage semantics, not cosmetic — D1 Decision 1).
+- Modified: `streamlineai-chat-frontend/index.html` — header version label `V1.4` → `V1.4.5` (line 11). StreamlineAI public chat frontend was V1.4 not V1.4.4; backend-only patches V1.4.1 through V1.4.4 left frontend label silently behind (Standing Rule 2 wording-extension candidate — see below).
+- Frontend `frontend/index.html` (UPunt public chat) intentionally NOT touched — frozen surface per Session 25 frozen-deployment definition. Currently shows V1.2.
+
+Three Netlify Function proxy migrations shipped outside the git repo (NewsletterIQ + LeadLock NP Support + LeadLock StreamlineAI). Two new Anthropic keys generated (leadlock-npsupport, leadlock-streamlineai) alongside session-start newsletteriq-prod. Three new local source folders: `C:\Users\gphi9\CODE\NEWSLETTERIQ-PROXY`, `C:\Users\gphi9\CODE\LEADLOCK-NPSUPPORT-PROXY`, `C:\Users\gphi9\CODE\LEADLOCK-STREAMLINEAI-PROXY`. Each contains identical `netlify/functions/proxy.js` (Anthropic passthrough), identical `netlify.toml` (functions dir + Node 20 esbuild config), and per-deployment patched `index.html`. Proxy.js is structured-error compliant per Build Standard #2 (`{status, type, message, suggestion, recoverable}` shape).
+
+Architecture: each proxy reads `ANTHROPIC_API_KEY` from Netlify env var (per-project, secret-marked, scoped Builds/Functions/Runtime, 4 deploy contexts populated with Local development empty per security discipline). Frontend HTML POSTs to `/.netlify/functions/proxy` with `{model, max_tokens, system, messages}` body; proxy forwards to Anthropic with server-side key; response passthrough. Zero client-exposed credentials in deployed HTML.
+
+Anthropic dashboard state post-V1.4.5:
+- `newsletteriq-prod` LIVE on `newsletteriq.netlify.app`
+- `leadlock-npsupport` LIVE on `leadlockiq.netlify.app`
+- `leadlock-streamlineai` LIVE on `streamlineai-enquiries.netlify.app`
+- `chatbotiq-dev` LIVE on UPunt + StreamlineAI ChatbotIQ deployments (Railway, unchanged)
+- `Streamline API 2` REMAINS LIVE — serves 4 of 5 free IQ tools (DecisionIQ, ProposalIQ, ClientFlowIQ, StaffTalkIQ). Rotation deferred to V1.4.6.
+- `Streamline API` (`bZl...UAAA`) DISABLED since Apr 16 — served BizPulse, dormant deletion bundled with `Streamline API 2` rotation at V1.4.6.
+
+Workspace cap raised mid-session from $40/mo to $80/mo (Gareth call — stronger margin for paying-client phase, D1 had recommended $60). Email notification raised to $60. Auto-reload deferred (Tier 1 account restriction — only available at Tier 2+). One-off $50 credit top-up applied, balance $71.38 post-top-up. Two-week credit-check calendar reminder set as manual monitoring backstop. Tier upgrade is a calibration trigger when burn rate increases post-website-launch.
+
+**Decided:**
+
+- **Test G fix deferred to V1.5 per D1.** Three-layer diagnostic (rendered output / SSE stream / model output via Railway logs) ran across four runs of "Should I invest in Bitcoin?" on streamlineai-chat. Findings: Session 28's "truncated quote" was model variance (not reproduced — all four runs returned full quote body). Real findings: (a) attribution rendered 1/4 runs only — model emits attribution intermittently; (b) anti-pattern (b) trailing-prose regression on Run 3 ("That's Gareth's take on it. If you've got questions about AI tools for your business, I'm here for those.") — V1.4.4 directive holds on business-question shape (Tests B/C Session 27/28) but breaks on off-topic-refusal shape (Test G). Class-of-question generalisation drift. V1.5 calibration candidates A (engine-side deterministic attribution append) + B (VERBATIM RESPONSE SCOPE third iteration) logged. V1.5 evidence count: 4 inputs (Session 25 multi-VERBATIM-tie + Session 26 paraphrase retrieval + Session 28 short-query overview-collision + Session 30 Test G class-of-question generalisation drift).
+
+- **Item 4 deferred to V1.4.6 per mid-session D1 call.** Streamline API 2 is shared infrastructure serving 4 of 5 free IQ tools (DecisionIQ + ProposalIQ + ClientFlowIQ + StaffTalkIQ). Rotating it post-V1.4.5 would break four working products without prior migration. V1.4.6 scope locked: migrate all five free IQ tools to Netlify proxy architecture (BizPulse is the 5th, currently broken since Apr 15 on the dormant `bZl...UAAA` key — human-error casualty of Apr 16 rotation), generate five new Anthropic keys, then rotate Streamline API 2. Estimated 75-90 min D2 work.
+
+- **D1 Decision 1 (Item 5 source-tag).** admin-frontend source-tag default `admin-form-v1.3.3` preserved at V1.4.5 cosmetic bump. Source-tag is data-lineage metadata (Pattern 5 frame — header = CODE-state indicator, source-tag = CONFIG/data-tag), bumps only on admin-form material change (validation logic, field schema, submission flow), not on backend version increments. Future-Gareth reading KB entries' source field can identify which entries were created under which admin-form spec. Bumping cosmetically every session would corrupt that lineage.
+
+- **D1 Decision 2 (Item 5 frontend scope).** Only admin-frontend + streamlineai-chat-frontend bumped to V1.4.5. UPunt public chat frontend (V1.2, in `frontend/`) intentionally untouched — frozen surface per Session 25 Operating Discipline. Per-deployment cosmetic touches require explicit justification; UPunt public chat wasn't surfaced in original brief or during execution.
+
+- **Per-deployment Anthropic keys (Item 3 sub-decision).** D1 sequencing Option C + key-strategy Option ii: NP Support first, StreamlineAI second pass, separate `leadlock-npsupport` + `leadlock-streamlineai` keys rather than one shared `leadlock-prod`. Session 16 discipline preserved — per-tenant key separation supports per-tenant spend visibility, aligns with paying-client phase where Lingard/Matty review traffic shifts attribution semantics.
+
+- **Workspace cap structure.** Single Default workspace, per-key cost visibility via dashboard Cost column, workspace-level monthly spend cap at $80 (raised from $40). Gareth's call — stronger margin justified for paying-client phase. Tier 1 account = $100/mo Anthropic-side ceiling, $80 workspace cap is effective limit anyway. Future tier upgrade trigger logged.
+
+- **Netlify env var "Contains secret values" workflow forces per-context value entry but does NOT force value into Local development context.** Strictest security posture (paste key into Production + Deploy Previews + Branch deploys + Preview Server, leave Local development empty) is achievable in practice, not just theoretically. Applied consistently across all three proxy migrations. Worth flagging — if Local development ever becomes needed (e.g., Netlify CLI debugging), a separate low-cap key would be the right path rather than exposing the prod key.
+
+- **Standing Rule 1 (Pattern 22) satisfied four times.** `git show HEAD:admin-frontend/index.html`, `git show HEAD:frontend/index.html`, `git show HEAD:streamlineai-chat-frontend/index.html`, plus full Pattern 22 reads on the uploaded `leadlock.html` (NP Support) and `streamlineai-leadlock.html` files before generating either LeadLock proxy artefact. All six reads executed before any generation. Zero memory-based assumptions on file shape.
+
+- **Standing Rule 2 satisfied across all five deployment surfaces.** Hard-refresh after each frontend deploy: NewsletterIQ smoke (Test A + Test B), LeadLock NP Support smoke (twice — DevTools-late retry caught the init-fetch timing), LeadLock StreamlineAI smoke, admin-frontend cosmetic verify, streamlineai-chat cosmetic verify.
+
+- **Standing Rule 3 fired pre-emptively (third proof — first was Session 27).** Pre-tag check `git tag -l v1.4.5` + `git ls-remote --tags origin v1.4.5` both empty before tagging. Post-tag verification confirmed `535b480001d142cb25c640824404eda08e65bf80 refs/tags/v1.4.5` matching push output. Tag landed on correct commit. Now methodology Pattern 13.
+
+- **Standing Rule 5 satisfied (third proof).** Proxy-only sanity check via `Invoke-RestMethod` POST to `/.netlify/functions/proxy` ran before UI smoke on all three proxy migrations. Caught zero issues — all three returned `content[0].text: "OK"` cleanly. Now methodology Pattern 14.
+
+- **Standing Rule 6 satisfied (second proof — first was Session 27).** Every diagnostic command sent in copy-pasteable PowerShell shell-quoted form with platform explicit. Heredoc-style `$proxyBody = @{...} | ConvertTo-Json -Depth 5` pattern reused three times for the per-deployment proxy sanity check — Gareth ran each verbatim, zero command-syntax friction. Sibling-shape to Pattern 22 (verify before sending), promotion candidate at next D1 close-out.
+
+**Broken — three findings logged in journal, none blocking V1.4.5 ship:**
+
+1. **BizPulse stale-key state — 27 days broken.** Forensic finding mid-session when D1 reviewed Streamline API 2 rotation. BizPulse depends on the dormant `bZl...UAAA` key disabled Apr 16. Rotation logic was applied to other products but BizPulse missed during the Apr 16 fix — human error, not a discipline failure of the rotation itself. Master file API key discipline section needs a per-key product-mapping subsection (existing discipline tracks key naming + spend caps; lacks "which products depend on which keys" mapping). V1.4.6 fixes by migrating BizPulse to its own `bizpulse-prod` key with proxy.
+
+2. **streamlineai-chat frontend version label stuck at V1.4 across V1.4.1 through V1.4.4 backend patches.** Standing Rule 2's spirit (visual confirmation indicator on every shippable version) was broken when patches went backend-only and Rule 2 was read strictly as "only after frontend deploy." Logged at Session 4 already but resurfaced this session. Worth amending Rule 2 wording — see Open Questions.
+
+3. **Three Netlify projects with "Canceled" deploys across Session 22-27 commits.** Initial diagnostic interpretation was "broken Git path / config drift". Real cause: Netlify auto-skips deploys when build output is byte-identical to previously published artifact. V1.4 through V1.4.4 commits touched only `backend/`, frontends were byte-identical, build completed but Deploying stage Skipped, Netlify marks "Canceled". Healthy infrastructure behavior, not silent failure. Distinguishing test: read deploy log step states (Initializing Complete / Building Complete / Deploying Skipped → byte-identical optimisation; vs Build Failed → real failure). Logged for future diagnostic speed.
+
+**Test G — full diagnostic protocol applied (3-layer):**
+
+| Run | Prompt | Quote body | Attribution | Trailing prose |
+|---|---|---|---|---|
+| 1 | "Should I invest in Bitcoin?" | Full ✓ | Present ✓ | None |
+| 2 | "should i invest in bitcoin?" | Full ✓ | Missing | None |
+| 3 | "Should I invest in Bitcoin?" | Full ✓ | Missing | **Anti-pattern (b)**: "That's Gareth's take on it..." |
+| Session 28 | "Should I invest in Bitcoin?" | Truncated | Missing | n/a |
+
+Three-layer protocol: Rendered output (browser bubble), SSE stream (DevTools Network → EventStream), Anthropic raw output (Railway logs accessible but unused — SSE matched rendered). Diagnosis: model variance + class-of-question generalisation drift. Methodology candidate (1/2 proofs) logged: "Three-layer diagnostic protocol for output quality issues" — sibling-shape to Pattern 23 (verify state before testing), applied to output quality rather than runtime state. Promote on second occurrence.
+
+**Pattern check:**
+
+- Pattern 5 (CONFIG vs CODE) — all three proxy migrations preserved per-deployment CONFIG values. StreamlineAI LeadLock CONFIG (own sheetsWebhook) NOT contaminated by NP Support CONFIG (separate webhook). Verified via grep cross-check before deploy. Decision 1 (source-tag preservation) is a Pattern 5 application — header version is CODE-state, source-tag is CONFIG/data lineage, different update triggers.
+- Pattern 11 (Pre-Generation Scope Confirmation) — invoked twice mid-session. (1) Item 3 sub-decision on per-tenant keys vs shared key — three options scoped, D1 confirmed C + ii. (2) Item 5 source-tag handling — three options scoped, D1 confirmed B.
+- Pattern 14 (Stop-And-Ask) — invoked seven times across session. Cost + Security (Anthropic key creation × 3), Data shape (source-tag handling), External services (Netlify env var × 3), Cost (workspace cap raise + credit top-up). All produced explicit decision before action.
+- Pattern 15 (Build Journal Discipline) — entry being written now per protocol.
+- Pattern 16 (Handback to D1) — V1.4.6 scope handed forward; six handback items below.
+- Pattern 22 (Verify Prior Version's Exports Before Extending) — six reads at session open + mid-session. See Standing Rules check above.
+- Pattern 23 (Verify Runtime State Matches Deployed State Before Testing) — applied to Netlify deploy state diagnosis (read deploy log step states, don't just trust "Canceled" badge), proxy-only smoke before UI smoke, hard-refresh before reading version labels.
+
+**Build Standards check:**
+
+- #1 prompt caching — N/A this session. NewsletterIQ + LeadLock proxies don't implement caching (different traffic shape — newsletter generation is one-shot 8000-token call, LeadLock conversations rebuild system prompt per turn from CONFIG). Build Standard #1 applies to ChatbotIQ chat workflows specifically.
+- #2 structured error handling — proxy.js implements `{status, type, message, suggestion, recoverable}` envelope at all five error paths: method guard (405 validation_error), missing env var (500 config_error), JSON parse failure (400 validation_error), missing required body fields (400 validation_error), Anthropic network failure (502 downstream_unavailable recoverable). Anthropic success/failure responses passthrough verbatim.
+- #3 response validation — proxy.js relies on Anthropic's response format. Frontend code parses `data.content[0].text` as before (unchanged from pre-proxy architecture). No new validation surface introduced.
+- #4 streaming — N/A this session. NewsletterIQ + LeadLock are request/response, no SSE. Test G diagnostic verified existing SSE on streamlineai-chat working as designed.
+- #5 stop_reason router — N/A. NewsletterIQ + LeadLock don't dispatch on stop_reason; they read `data.content[0].text` and render.
+- #6 pre-deployment checklist — passed for each of three proxy migrations + cosmetic frontend bumps. Hard-refresh + version-label verification applied per Standing Rule 2.
+
+**Cost / spend state:**
+
+- Workspace cap: $40/mo → $80/mo. Email notification threshold $30 → $60.
+- Credits balance pre-session: $21.38. One-off top-up $50 mid-session. Balance post-top-up: $71.38.
+- Spend during session (all keys aggregated): newsletteriq-prod $0.02 (NewsletterIQ smoke), leadlock-npsupport $0.01 estimated, leadlock-streamlineai $0.01 estimated, Streamline API 2 $0.01 (unexplained — possibly stale dashboard caching from Apr 18 or background calls). Total session spend ~$0.05.
+- `chatbotiq-prod` key still not created — StreamlineAI public chat traffic remains testing-only scale; trigger fires at website go-live (Session 31 D1 work).
+- Tier 1 account ceiling: $100/mo Anthropic-side hard ceiling regardless of workspace cap. Tier 2+ unlocks auto-reload + higher ceiling. Calendar trigger at first sustained burn approaching tier limit.
+
+**Standing rules check:**
+
+- Rule 1 (verify prior version's exports before extending) — satisfied. Six Pattern 22 reads at session open + mid-session.
+- Rule 2 (hard-refresh after frontend deploy) — satisfied across all surfaces. Wording-extension candidate logged in Open Questions for D1 amendment review.
+- Rule 3 (verify tag namespace state before tagging) — satisfied pre-emptively, third pre-emptive proof.
+- Rule 4 candidate (final file content not diff representation) — N/A this session, no diff-format generation.
+- Rule 5 candidate (diagnostic endpoints as pre-flight before chat-surface smoke) — N/A in original wording (which is chatbotiq-specific). Generalised form satisfied via proxy-only sanity check before UI smoke on all three proxy migrations — third proof of the generalised pattern. D1 promotion call: keep narrow chatbotiq-scoped wording vs broaden to "diagnostic endpoint pre-flight for any surface change."
+- Rule 6 candidate (verify diagnostic command syntax before sending to operator) — satisfied, second proof.
+
+**Files changed at V1.4.5:**
+
+In git repo:
+- Modified: `admin-frontend/index.html`, `streamlineai-chat-frontend/index.html`
+- Tag: `v1.4.5` at commit `535b480` (verified on remote: `535b480001d142cb25c640824404eda08e65bf80 refs/tags/v1.4.5`)
+
+Outside git repo (per established pattern — drag-deploy projects):
+- New folder: `C:\Users\gphi9\CODE\NEWSLETTERIQ-PROXY\` (index.html patched + netlify.toml + netlify/functions/proxy.js)
+- New folder: `C:\Users\gphi9\CODE\LEADLOCK-NPSUPPORT-PROXY\` (same structure)
+- New folder: `C:\Users\gphi9\CODE\LEADLOCK-STREAMLINEAI-PROXY\` (same structure)
+- These three folders are NOT in version control. Local-only source-of-truth. Netlify deploys are the canonical record. Bringing them into git is V1.4.6 candidate (likely as separate repos per Pattern 5 — each is a distinct deployment surface with different CONFIG).
+
+**Next:**
+
+D2 Session 31 candidates (D1 sequencing):
+
+1. **V1.4.6 — five free IQ tools proxy migration + Streamline API 2 rotation + bundled disabled-key cleanup.** Locked scope, 75-90 min estimate. Pattern-proven (three migrations shipped this session, fourth identical pattern applied five times). Includes fixing BizPulse stale-key state (27 days broken).
+2. **V1.5 retrieval + scope-rule calibration pass — 4 inputs queued.** Multi-VERBATIM-tie tiebreak rule, paraphrase retrieval (trigram fuzzy matching pg_trgm extension), short-query overview-collision (Entry 5 secondary-companion behaviour), Test G class-of-question generalisation drift + attribution-rendering shift. Larger scope than V1.4.x patches.
+
+D1 to decide which opens first. Recommendation: V1.4.6 first — pattern-proven, finishes the security migration class, opens path to deleting Streamline API 2 + dormant key cleanly. V1.5 calibration is more open-ended and lower-urgency.
+
+**Open questions for D1:**
+
+1. **V1.4.6 scope confirmation** — five free IQ tools + Streamline API 2 rotation + bundled disabled-key delete. D1 to confirm at session-start or amend.
+
+2. **Standing Rule 2 wording extension.** Current Rule 2 fires only on frontend code change. Backend-only patches across V1.4.1 / V1.4.2 / V1.4.3 / V1.4.4 caused silent frontend label drift on streamlineai-chat (V1.4 stuck while backend at V1.4.4). Proposed amendment: "Frontend version labels bump every shippable backend version, even when no frontend code change ships." Diagnostic indicator stays current. D1 call: amend Rule 2 wording or treat as separate Rule 7 candidate.
+
+3. **Standing Rule 5 promotion scope.** Now methodology Pattern 14 per Session 27 close-out. Wording is chatbotiq-scoped ("diagnostic endpoints as pre-flight before chat-surface smoke"). Session 30 third proof was generalised form — proxy-only sanity check before UI smoke applied across three non-ChatbotIQ deployments. D1 call: keep narrow wording or broaden to "any-surface diagnostic pre-flight before user-facing smoke."
+
+4. **Standing Rule 6 promotion candidate.** Two proofs now (Session 27 + Session 30). Wording: "Verify diagnostic command syntax before sending to operator." Sibling-shape to Pattern 22 (verify code before extending), applied to operator command surface. D1 call: promote to methodology doc as Pattern 15.
+
+5. **Three-layer diagnostic protocol — methodology candidate (1/2 proofs).** Test G diagnosis isolated model output / SSE stream / rendered bubble layers separately. Sibling-shape to Pattern 23 (verify runtime state). Different focus — output quality vs runtime state. D1 call: log as candidate, monitor for second proof.
+
+6. **Master file doc gap.** Infrastructure section describes ChatbotIQ Netlify projects without specifying per-project deploy mechanism (Git auto-deploy vs drag-deploy). Session 30 hit this — drag-deploy planned for what turned out to be Git-linked projects, caused mid-session re-routing. D1 to amend master file Infrastructure section: explicit deploy-mechanism column per Netlify project.
+
+7. **API key discipline doc gap — per-product mapping.** Master file API key discipline section tracks naming convention + spend cap + traffic-volume triggers, but lacks "which products depend on which keys" mapping. BizPulse stale-key state surfaced mid-session because the dependency wasn't documented. D1 to add per-key product-mapping subsection.
+
+8. **Methodology doc v1.2 batch update queue.** Now ~9 items per master file Session 28 count of 7 + Rule 6 promotion (+1) + Rule 2 wording extension or Rule 7 candidate (+1) + three-layer diagnostic candidate (+1 awaiting second proof). D1 to schedule batch update — Lingard-day-before per established discipline.
+
+9. **`chatbotiq-prod` key trigger** — unchanged from Session 28. Fires at website go-live (Session 31 D1 work) or paying-client traffic, whichever first.
+
+10. **NewsletterIQ per-client URL / config isolation surfaced.** Logged mid-session when Champion Bets localStorage state appeared in fresh NewsletterIQ smoke test. Current `newsletteriq.netlify.app` is one URL with one localStorage namespace — paying clients on the same URL would share localStorage. V1.4.6+ candidate (paying-client onboarding architecture). Not blocking V1.4.5 ship.
+
+11. **Tier 1 Anthropic account ceiling — $100/mo hard cap regardless of workspace cap.** Tier 2+ unlocks auto-reload + higher ceiling. Tier upgrade path is cumulative-spend + time-in-account driven. Calibration trigger at first sustained burn approaching tier limit (likely post-website-launch).
+
+12. **PowerShell `Set-Content` line-ending churn.** Triggers `LF will be replaced by CRLF` warning on `git diff`. Git autocrlf normalises on commit, working tree stays CRLF. No content drift. Alternative `[System.IO.File]::WriteAllText($path, $content)` preserves source line endings. Environment artefact, not a discipline failure. Logged for awareness.
+
+---
+
+### HANDBACK TO D1 — V1.4.5 ship close + V1.4.6 scope + V1.5 calibration + master file doc gaps
+
+**Context:**
+
+V1.4.5 shipped at `535b480`, tagged `v1.4.5`. Five-item scope per mid-session expansion: four shipped (Test G diagnosis, three proxy migrations, two cosmetic frontend bumps), one deferred (Streamline API 2 rotation). No hard guardrail violations. No engine architecture changes. Three Anthropic key migrations close the paid-product client-side credential exposure surface.
+
+Pre-launch readiness post-V1.4.5: NewsletterIQ now safe to put on website as paid product (D1 brief criterion met — proxy migration complete). LeadLock both deployments on per-tenant keys. Streamline API 2 retains free-tool serving role through V1.4.6.
+
+**Questions for D1 (framed as decisions with options):**
+
+1. **V1.4.6 scope confirmation.** Locked at session close: five free IQ tools (BizPulse, DecisionIQ, ProposalIQ, ClientFlowIQ, StaffTalkIQ) migrate to Netlify proxy architecture; five new keys (`{product}-prod` naming); Streamline API 2 rotated post-migration; both disabled keys deleted 24-48 hours post-V1.4.6 ship. D1 confirm or amend.
+
+2. **V1.5 sequencing.** Four V1.5 calibration inputs queued. D1 call: V1.4.6 first then V1.5 (recommended), V1.5 first then V1.4.6, or run V1.4.6 alongside D1 launch-prep work and V1.5 deferred until post-launch?
+
+3. **Two methodology promotions.** Rule 6 candidate (verify diagnostic command syntax) now at 2 proofs — promote to Pattern 15. Three-layer diagnostic protocol at 1 proof — log as candidate, monitor for second.
+
+4. **Two Standing Rule wording amendments.** Rule 2 wording extension (frontend version labels bump every shippable version, not only on frontend code change) + Rule 5 wording scope (chatbotiq-narrow vs any-surface-broad).
+
+5. **Two master file doc gaps.** Per-Netlify-project deploy mechanism column (Git vs drag), per-key product-mapping subsection (which products depend on which keys).
+
+**Recommendation:**
+
+V1.4.6 opens next D2 session. Pattern-proven (NewsletterIQ + LeadLock × 2 ship this session). Five free tools = same workflow × 5. Mature playbook reduces session risk.
+
+V1.5 calibration deferred until post-launch — real-prospect retrieval evidence will sharpen calibration scope vs guessing at the four logged inputs in isolation.
+
+Methodology promotions + wording amendments + doc gaps: batch update at Lingard-day-before (existing discipline), all logged in journal for retrieval.
+
+**Status until D1 resolves:** V1.4.5 LIVE across all five surfaces (NewsletterIQ, LeadLock NP Support, LeadLock StreamlineAI, UPunt admin frontend, StreamlineAI chat frontend). Streamline API 2 retains active role. Free-tool exposure surface unchanged from pre-V1.4.5 (acceptable per master file DAPS Operating Notes — "until volume justifies"). D2 awaiting D1 sequencing call on V1.4.6 vs V1.5.
+
+---

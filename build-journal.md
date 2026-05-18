@@ -1394,3 +1394,156 @@ Methodology promotions + wording amendments + doc gaps: batch update at Lingard-
 **Status until D1 resolves:** V1.4.5 LIVE across all five surfaces (NewsletterIQ, LeadLock NP Support, LeadLock StreamlineAI, UPunt admin frontend, StreamlineAI chat frontend). Streamline API 2 retains active role. Free-tool exposure surface unchanged from pre-V1.4.5 (acceptable per master file DAPS Operating Notes — "until volume justifies"). D2 awaiting D1 sequencing call on V1.4.6 vs V1.5.
 
 ---
+
+### Session 31.5 — 14 May 2026 — V1.4.5.1
+
+**Built:** V1.4.5.1 shipped at commit `f984f2e`, tag `v1.4.5.1`. CONFIG-only patch addressing ChatbotIQ-LeadLock architectural drift surfaced Session 31 (Penny Phillips real-prospect interaction). Four edits per D1 Session 31 brief:
+
+- Edit A — `example_messages` #10 (ready-to-buy signal): rewrote to route to GET STARTED button + `gareth@streamlineai.net.au` direct email. Removed "Want me to grab your email and set that up?" close.
+- Edit B — `example_messages` #11 (INSUFFICIENT DATA Case 1, KB gap): rewrote to same dual-route close. Removed "let me flag it for Gareth and he'll come back to you. Want to leave your email?" close.
+- Edit C — `example_messages` #13 (speculative can-you-build-X): rewrote to same dual-route close. Removed "want me to set one up?" call-booking close.
+- Edit D — `hard_guardrails` #17 appended: "Never accept or capture an email address mid-conversation. When a prospect signals readiness or asks for contact, route them to the GET STARTED button (LeadLock) at the top of the page AND/OR provide gareth@streamlineai.net.au as the direct email — never offer to 'grab' or 'take' an email address yourself."
+
+System prompt grew +524 chars from V1.4.5 baseline (15381 → 15905). Within expected band. Build Standard #1 cache write cost: turn 1 post-deploy invalidated cache and re-wrote (~$0.04 estimated marginal cost); turns 2+ resume cache-read pattern. Accepted per brief.
+
+**Decided:**
+
+- **D1 Option C — V1.4.5.1 ships as partial fix despite Scenario 2 FAIL.** Edits A + C land cleanly per smoke results. Edits B + D close the explicit "grab your email" class but leave the implicit "flag for Gareth" callback-promise class open. Net improvement over pre-V1.4.5.1 state. D1 reasoning: D2's diagnosis (deeper shaping problem than example-driven CONFIG can reach) points to engine layer, not CONFIG layer. Extending hard_guardrail #17 wording today predicts whack-a-mole — would close Penny's exact phrasing, leave adjacent phrasings open. Same shape as V1.4.4 VERBATIM RESPONSE SCOPE iteration history (three CONFIG patches Sessions 25-27 delivered partial wins before structural fix at V1.4.4 closed the class). Skip the intermediate CONFIG patches this time, go straight to structural fix at V1.4.5.2.
+
+- **V1.4.5.2 structural fix queued — engine layer.** Add INSUFFICIENT DATA TEMPLATE block to system prompt that mandates literal routing close (parallel to VERBATIM RESPONSE SCOPE relocation Session 27). Closes the class architecturally rather than example-by-example. D1 composes brief, V1.4.5.2 D2 session within 24-48 hours, lands before Japan flight (6-day window).
+
+- **Pattern 22 path mismatch caught and resolved at Step 1.** Brief specified `config/streamlineai.js` for the four edits. `git show v1.4.5:config/streamlineai.js` returned `fatal: path 'config/streamlineai.js' does not exist in 'v1.4.5'`. Resolved via `git ls-tree -r v1.4.5 --name-only | findstr streamlineai` — real path is `backend/config/streamlineai.js`. No edits attempted against the wrong path. Standing Rule 1 functioning as designed — caught the discrepancy pre-edit, zero deploy cost.
+
+- **Standing Rule 4 satisfied via whole-file deliverable.** Initial output was two array-replacement blocks for hand-editing into the existing file. Operator flagged high-risk-of-human-error on hand-edit, requested complete final file. D2 generated full `backend/config/streamlineai.js` with all edits applied, byte-identical to pre-edit file outside the four targeted regions. Self-diff verified six change blocks total (header comment, voice_profile comment, #10/#11/#13 wording, hard_guardrails comment, +#17). Zero collateral damage. Whole-file delivery is the right discipline for any multi-region edit going forward.
+
+- **Standing Rule 5 (Pattern 14) satisfied.** Diagnostic endpoint `GET /admin/debug/system-prompt/streamlineai` ran before chat-surface smoke. `$resp.prompt.Length` = 15905, +524 chars from V1.4.5 baseline. Pattern matches confirmed new hard_guardrail #17 rendered + new example_messages #10/#11/#13 rendered. End-to-end content pipeline (CONFIG → engine render → admin endpoint) verified working before any chat session ran. Caught zero issues this session but functioned as designed.
+
+- **Standing Rule 3 fired post-detection (fourth proof).** New failure mechanism inside the same class: tag created AFTER commits already pushed → `git push --follow-tags` no-op'd because no commits were transported in that operation. Tag remained local-only despite Railway showing commit ACTIVE. Detected via `git ls-remote --tags origin v1.4.5.1` returning empty. Recovered with explicit `git push origin v1.4.5.1`. Audit-trail cleanup only, no production state at risk. Mechanism inventory now: Session 23 (stale pre-existing tag), Session 26 (commit-without-stage put tag on wrong commit), Session 30 (pre-emptive prevention), Session 31.5 (tag created post-push, --follow-tags no-op).
+
+**Broken — Scenario 2 FAIL is the headline finding:**
+
+Smoke test results on `streamlineai-chat.netlify.app`, post hard-refresh, three scenarios:
+
+| Scenario | Prompt | Result | Detail |
+|---|---|---|---|
+| 1 — Ready-to-buy (Edit A) | "I want to talk to Gareth about LeadLock" | PASS | Bot routed to GET STARTED + direct email. Voice on-brand. No email-grab. |
+| 2 — INSUFFICIENT DATA Case 1 (Edit B + D) | "Do you have any deployments in healthcare?" | **FAIL** | Bot output INSUFFICIENT DATA literal opener correctly, then closed with "Want me to flag this for Gareth so he can tell you what's been built in that space?" — functionally identical to pre-edit #11 wording that surfaced Penny's drift Session 31. |
+| 3 — Speculative can-you-build (Edit C) | "Can you build a chatbot for my real estate agency?" | PASS | Bot retrieved a VERBATIM entry ("If you need something specific built, give us a try..."), routed cleanly to GET STARTED + direct email. VERBATIM RESPONSE SCOPE directive holding on this shape. |
+
+Scenario 2 detailed bot response (verbatim):
+
+```
+INSUFFICIENT DATA — the knowledge base doesn't include case studies or 
+specific client deployments by industry yet. StreamlineAI does work 
+across different industries, but I can't confirm healthcare deployments 
+specifically without that information. Want me to flag this for Gareth 
+so he can tell you what's been built in that space?
+```
+
+**Diagnosis:**
+
+Edit B (example_messages #11 rewrite) did not shape the bot's response. Edit D (hard_guardrail #17) did not fire because its wording prohibits "grab/take email" but does not cover "flag for Gareth" / callback-promise shapes. The bot is one turn upstream of where #17 fires — it offers the callback option (turn 1), which would lead to email-ask (turn 2) where #17 finally catches it. But by then the prospect has been promised a notification that doesn't fire — same outcome as Penny.
+
+Likely root cause per D2 + D1 agreement: the bot's INSUFFICIENT DATA response shape has its own attractor (from broader training data on "I don't have an answer" patterns + voice profile's "moves toward a clear next step" instruction) that example #11 doesn't override. Example-driven CONFIG fixes have a ceiling. When training-data attractors are strong, examples alone won't override — structural directives at the engine layer are required. Same pattern as V1.4.4 VERBATIM RESPONSE SCOPE: three Session 25-27 CONFIG iterations delivered partial wins before structural relocation closed the class at V1.4.4.
+
+**Note on V1.4.4 VERBATIM RESPONSE SCOPE directive interaction (per brief):**
+
+Brief asked whether new Edit B language works cleanly with the directive's anti-trailing-prose rule. Expected: yes, because the routing language IS the answer, not synthesised commentary on the answer.
+
+Answer: undetermined this session — Scenario 2 didn't get far enough to test the interaction because the bot didn't render Edit B's wording at all. The bot synthesised its own INSUFFICIENT DATA close from prior-pattern attractor rather than pulling example #11. Whether Edit B language interacts cleanly with VERBATIM RESPONSE SCOPE will be testable post-V1.4.5.2 structural fix.
+
+**Bonus diagnostic finding — PowerShell `Select-String` on long single-string content:**
+
+`$resp.prompt | Select-String -Pattern "X"` returned the entire prompt rather than only matching lines. Cause: `$resp.prompt` is one giant string with embedded newlines, not an array of lines, so `Select-String` matches the whole string as one "line." Workaround for cleaner pattern matching: split first with `$resp.prompt -split "`n" | Select-String -Pattern "X"`. Logged for future diagnostic command shape — not blocking, but cleaner output is one line of pipe addition.
+
+**Journal sync recovery — retroactive Session 30 entry:**
+
+Session 31.5 session-open `git status` after first edit revealed `build-journal.md` modified but unstaged. Diff was the complete Session 30 entry + V1.4.5 handback (~191 lines), written locally Session 30 (12 May 2026) but never committed and never uploaded to D2 KB. Pattern 15 sync-rule failure from Session 30 close — local commit + KB upload are two independent operations; either can be skipped without the other firing an error, and Session 30 evidently skipped both for the journal entry specifically. D2 session-start KB read had been operating against a journal stale by one entry for ~6 days. Recovered by committing journal separately first (`439d9ab`, "journal sync: append Session 30 V1.4.5 entry + handback (retroactive, missed at S30 close)"), then committing V1.4.5.1 CONFIG change as second commit. Two separate concerns, two separate commits, clean audit trail.
+
+**Pattern check:**
+
+- Pattern 5 (CONFIG vs CODE) — clean. CONFIG-only patch. No engine code touched. V1.4.5.2 structural fix will require engine work (out of D2 brief scope for this session, queued).
+- Pattern 11 (Permissive Rules Require Concrete Scope) — applied to all four edits. Edits A/B/C add concrete routing alternatives; Edit D adds concrete behavioural prohibition. Scenario 2 FAIL reveals the limit of example-driven Pattern 11 application against training-data attractors — concrete scope at the example layer isn't sufficient when the bot's response shape has its own attractor independent of the example.
+- Pattern 14 (Stop-And-Ask) — invoked twice. Tag question (resolved Option A, tag `v1.4.5.1`). Journal sync recovery (D2 + D1 implicit agreement: commit journal separately first).
+- Pattern 15 (Build Journal Discipline) — entry being written now. Retroactive Session 30 entry sync recovered earlier in session.
+- Pattern 16 (Handback to D1) — V1.4.5.2 scope handback written and executed mid-session. D1 returned Option C decision within ~2 minutes.
+- Pattern 22 (Verify Prior Version's Exports Before Extending) — fired and caught the path mismatch (`config/streamlineai.js` vs `backend/config/streamlineai.js`). Zero deploy cost on the catch.
+- Pattern 23 (Verify Runtime State Matches Deployed State Before Testing) — applied to push-state diagnosis when Railway showed commit ACTIVE but `git push --follow-tags` returned "Everything up-to-date." Three-signal verification (`git status` + `git log -3 --oneline` + `git ls-remote --tags`) confirmed commits were on origin but tag was not. Recovered via explicit `git push origin v1.4.5.1`.
+
+**Build Standards check:**
+
+- #1 prompt caching — turn 1 post-deploy cache write cost absorbed (system prompt grew +524 chars). Cache machinery unchanged. Cache hits resume turn 2+.
+- #2 structured error handling — N/A this session, no error paths exercised.
+- #3 response validation — N/A this session, no validation surface introduced.
+- #4 streaming — verified working on streamlineai-chat smoke tests (all three scenarios streamed tokens normally, no empty bubbles).
+- #5 stop_reason router — N/A this session, no router changes.
+- #6 pre-deployment checklist — passed for V1.4.5.1 ship despite Scenario 2 FAIL per D1 Option C decision. Net improvement over pre-V1.4.5.1 state acknowledged. V1.4.5.2 follow-up required to close the class.
+
+**Cost / spend state:**
+
+- V1.4.5.1 system prompt grew +524 chars. Turn 1 cache write absorbed; turn 2+ cache reads unchanged. Negligible at current testing-only traffic.
+- Session 31.5 smoke test consumed 3 chat sessions (one per scenario). Estimated cost ~$0.05.
+- `chatbotiq-dev` API key cap unchanged at $40/mo workspace cap raised to $80/mo Session 30.
+- Credits balance approximately $71.30 (start of session $71.38, minor session-end spend).
+
+**Standing rules check:**
+
+- Rule 1 (verify prior version's exports before extending) — satisfied. Path mismatch caught pre-edit via `git show v1.4.5:config/streamlineai.js` failing → `git ls-tree` resolution → confirmed real path `backend/config/streamlineai.js`. Full file content read before generating any edits.
+- Rule 2 (hard-refresh after frontend deploy / verify backend version label) — frontend untouched this session (CONFIG-only patch), version label correctly remained `V1.4.5`. Hard-refresh applied before smoke tests anyway as defensive discipline.
+- Rule 3 (verify tag namespace state before tagging) — satisfied pre-emptively (`git ls-remote --tags origin v1.4.5.1` empty before tag created). Fourth proof of the rule fired post-detection: new failure mechanism (tag created post-push, --follow-tags no-op). Recovered via explicit `git push origin v1.4.5.1`. See journal mechanism inventory above.
+- Rule 4 (final file content not diff representation) — third proof. Initial output was array-replacement blocks; operator flagged human-error risk; D2 produced complete final file. Now at 3 proofs total — promote to methodology doc on next D1 close-out.
+- Rule 5 (diagnostic endpoint pre-flight) — satisfied. Now methodology Pattern 14 per Session 27 promotion.
+- Rule 6 candidate (verify diagnostic command syntax before sending to operator) — satisfied this session. PowerShell variable assignment used for `$token`, `$base`, `$url` per established pattern. Bonus diagnostic finding logged (Select-String quirk on single-string content) for future command refinement. Now at 3 proofs total (Session 27 + Session 30 + Session 31.5) — promote candidate.
+
+**Files changed at V1.4.5.1:**
+
+In git repo:
+- Modified: `backend/config/streamlineai.js` (+22/-6 lines: header comments + #10/#11/#13 rewrites + new guardrail #17)
+- Modified: `build-journal.md` (retroactive Session 30 entry + V1.4.5 handback sync, +188 lines, separate commit `439d9ab`)
+- Tag: `v1.4.5.1` at commit `f984f2e` (verified on remote: `f984f2e6be9e312b67e57fef04d79b1d758944a7 refs/tags/v1.4.5.1`)
+
+Railway deployment: V1.4.5.1 ACTIVE, Deployment successful, verified via dashboard.
+
+**Next:**
+
+D2 Session 31.6 candidate (or whichever version label D1 chooses for the structural fix): V1.4.5.2 INSUFFICIENT DATA TEMPLATE block at engine layer. D1 to compose brief tonight, D2 session within 24-48 hours, lands before Japan flight.
+
+V1.4.6 free-tool proxy migration still queued post-V1.4.5.2.
+
+**Open questions for D1 (handback below for any remaining):**
+
+- **V1.4.5.2 brief composition** — D1 to draft + upload to D2 KB.
+- **Methodology candidate at 2/2 proofs after V1.4.5.2 lands** — "Example-driven CONFIG fixes have a ceiling. When training-data attractors are strong, examples alone won't override. Structural directives at the engine layer are required." Sibling-shape to Pattern 11 (Permissive Rules Require Concrete Scope) but applied to limits of CONFIG-layer scope-tightening. V1.4.4 VERBATIM RESPONSE SCOPE = proof 1, V1.4.5.2 INSUFFICIENT DATA TEMPLATE = proof 2 if it closes the class. Logged by D1 in master file.
+- **Standing Rule 4 promotion** — now at 3 proofs (Session 26 + Session 30 was actually N/A per Session 30 journal so revising: Session 26 + Session 31.5 = 2 proofs). Re-check on next promotion review.
+- **Standing Rule 6 promotion** — now at 3 proofs (Session 27 + Session 30 + Session 31.5). Promote to methodology doc on next D1 close-out.
+- **Pattern 15 sync-rule sharpening candidate** — Pre-Session-End Checklist gets a `git status` check item before declaring session complete. Catches uncommitted journal entries, uncommitted code, or any other drift between intent and repo state. Sibling-shape to Standing Rules 3 and 5 — all "verify state before declaring done." This session's retroactive Session 30 journal sync is the first proof.
+
+---
+
+### HANDBACK TO D1 — V1.4.5.1 partial ship + V1.4.5.2 structural fix queued
+
+**Context:**
+
+V1.4.5.1 deployed at `f984f2e`, tagged `v1.4.5.1`. CONFIG-only patch per Session 31 brief. Three smoke scenarios: A and C PASS, B FAIL. D1 returned Option C decision mid-session: ship as partial fix, queue V1.4.5.2 structural fix at engine layer.
+
+Net effect of V1.4.5.1: Penny would not have been asked for her email immediately. She might still have been routed into a callback-promise flow ("Want me to flag this for Gareth?") that creates the same downstream issue (notification doesn't fire, prospect waits). Improvement over pre-V1.4.5.1 state but does not close the architectural drift Session 31 brief targeted.
+
+**Questions for D1 (framed as decisions with options):**
+
+1. **V1.4.5.2 brief composition and timing.** D1 to compose. Session window: within 24-48 hours per Japan flight constraint.
+
+2. **Methodology promotions queued.** Standing Rule 6 now at 3 proofs (promote to methodology doc as next pattern slot). Standing Rule 4 now at 2 proofs (one more required). Pattern 15 sync-rule sharpening candidate at 1 proof (Session 31.5 retroactive journal sync).
+
+3. **Master file Strategic Bets update.** D1 to log "Example-driven CONFIG fixes have a ceiling" pattern recognition note pending V1.4.5.2 second-proof confirmation.
+
+**Recommendation:**
+
+Close Session 31.5 now. V1.4.5.1 live, partial improvement, no rollback. D1 composes V1.4.5.2 brief at convenience; D2 session opens when brief is in KB.
+
+**Status until D1 resolves:**
+
+- V1.4.5.1 LIVE on Railway (commit `f984f2e`, tag `v1.4.5.1`).
+- Build journal entry written and being uploaded to D2 KB.
+- D2 paused awaiting V1.4.5.2 brief.
+
+---

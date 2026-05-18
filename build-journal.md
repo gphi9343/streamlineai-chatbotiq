@@ -1547,3 +1547,120 @@ Close Session 31.5 now. V1.4.5.1 live, partial improvement, no rollback. D1 comp
 - D2 paused awaiting V1.4.5.2 brief.
 
 ---
+
+### Session 31.6 — 18 May 2026 — V1.4.5.2
+
+**Built:** INSUFFICIENT DATA TEMPLATE block added as new top-level section at the end of the cached system prompt in `backend/lib/system-prompt.js`. Block fires whenever the existing INSUFFICIENT DATA RULE fires — mandates a verbatim routing close (sourced from CONFIG) and enumerates four forbidden alternative shapes (flag/log/note offers, email-capture mid-conversation, callback-promises, and class-not-phrasing variants). Two new CONFIG fields added to support the engine block: `routing_close` (the verbatim mandated close text) and `contact_email` (kept independent so future deployments can reference it from voice profile or guardrails without duplicating). StreamlineAI CONFIG populated with the full StreamlineAI close text + `gareth@streamlineai.net.au`. UPunt CONFIG populated with empty strings — engine block becomes a no-op for UPunt and the INSUFFICIENT DATA RULE section falls back to a B-ii fallback variant ("briefly acknowledge that you don't have the answer. Do not offer to capture the user's email or contact details, and do not promise any callback or follow-up"). The B-ii fallback removes V1.4.5.1's attractor seed instruction ("offer to capture the question for the operator") universally — UPunt benefits from the engine improvement at zero engine cost per Pattern 5 frozen-deployment rule. Section 3 (INSUFFICIENT DATA RULE) updated with ternary forward-pointer: routes to TEMPLATE section when `config.routing_close` populated, falls back to B-ii variant when empty. Voice-side reinforcement also landed: `signature_phrase` #6 ("Good question — let me flag that for Gareth.") dropped from `streamlineai.js` because it directly contradicts the engine TEMPLATE's forbidden alternative (a). Dropped, not replaced — replacing risks seeding a fresh attractor. Voice profile now has 9 signature_phrases; sufficient. Smoke test 4/4 PASS on `streamlineai-chat.netlify.app`. Primary V1.4.5.2 target (Session 31.5 Scenario 2 attractor) closed.
+
+**Decided:**
+
+- **Brief filename was wrong; Pattern 22 caught it at Step 1.** D1 brief specified `lib/promptBuilder.js` as the edit target. Recursive search returned zero matches. Actual file `backend/lib/system-prompt.js` confirmed via `Get-ChildItem -Recurse -Path backend\lib`. Logged as path-assumption variant of Standing Rule 1 (Rule 1 historically covers export shape, but path identity sits in the same class — "verify state before extending"). D2 proceeded on Option 1 (verify-and-continue) after surfacing the discrepancy via Stop-and-Ask. No D1 round-trip needed because the substitution was mechanically obvious and Option 1 cost zero added time.
+
+- **Brief function signature reference was wrong.** Brief referenced "`getSystemPrompt(deploymentSlug, ...)` deployment-router pattern." Actual signature is `buildSystemPrompt(config)` — single argument, deployment-agnostic by construction. No router function exists; deployment routing happens upstream at the caller. The function being deployment-agnostic means any top-level section added to it applies to all deployments automatically — INSUFFICIENT DATA TEMPLATE became universal-by-default, no per-deployment wiring needed. Pattern 5 split simplified by this discovery: engine code holds SHAPE for all deployments, CONFIG holds per-deployment content. UPunt's empty `routing_close` produces a graceful no-op via the same engine code that produces a rendered block on StreamlineAI.
+
+- **Pattern 5 boundary issue caught at Step 2b Stop-and-Ask.** Brief locked the mandated close as universal directive across `streamlineai` AND `upunt`. But the close hardcoded the StreamlineAI direct email (`gareth@streamlineai.net.au`) — a per-deployment value bleeding into universal engine code. D2 surfaced three options (A: hardcode + accept debt; B: CONFIG-driven; C: deployment-slug guard in engine). D1 selected Option B. Engine code now holds the rule SHAPE; CONFIG holds per-deployment content. UPunt B-upunt-i fallback (empty strings + B-ii section 3 variant) proves the split works at zero engine cost. Future paying-client deployments need only populate two CONFIG fields — no engine touch required. **Pattern 14 win:** Stop-and-Ask gate caught what the brief authored blind. D1 close-out observation: brief composition cannot anticipate all boundary issues — that's why the gate exists.
+
+- **signature_phrase #6 contradiction caught at D1 final review.** D2's own header comment block on `backend/lib/system-prompt.js` (lines 37-40) identified "Good question — let me flag that for Gareth." as the voice-side reinforcement of the V1.4.5.1 attractor that V1.4.5.2 was closing. But the phrase was still live in the first `streamlineai.js` draft D2 produced at Step 2b. D1 caught the contradiction at the final-shape review. The cached system prompt would have shipped with engine TEMPLATE forbidden alternative (a) directly contradicting voice profile signature_phrases licensing the same phrase as natural usage — a self-contradicting prompt. Recovery: D2 produced corrected `streamlineai.js` dropping signature_phrase #6 entirely. Drop not replace — replacing risks seeding a fresh attractor. Cross-check pass on the corrected file: scanned all CONFIG for the same contradiction class against engine TEMPLATE forbidden alternatives (a)-(d). example_messages #2 contains "happy to flag it for Gareth if you want a firm quote" but is on a CONFIDENT VOICE response to a pricing question — not an INSUFFICIENT DATA close — so out of TEMPLATE scope. hard_guardrail #17 prohibits email-capture explicitly (aligned). No other contradictions found.
+
+- **Methodology candidate "Example-driven CONFIG fixes have a ceiling" — PROOF 2 CONFIRMED at smoke.** V1.4.4 VERBATIM RESPONSE SCOPE relocation (Sessions 25-27) was proof 1. V1.4.5.2 INSUFFICIENT DATA TEMPLATE (this session) is proof 2. Both prove the same shape: when training-data attractors are strong (positioning + small-business context + voice profile "moves toward a clear next step" instruction), example_messages alone cannot override. Structural directives at the engine layer are required to close the behaviour class. D1 to promote to methodology doc on next close-out per Session 16 "2+ deployment proof" rule.
+
+- **Pattern 5 frozen-deployment rule confirmed by UPunt B-ii fallback.** UPunt CONFIG passed empty `routing_close` and empty `contact_email`. Engine code rendered: TEMPLATE block absent (correct), INSUFFICIENT DATA RULE section with B-ii fallback wording present (correct), V1.4.5.1 attractor seed "offer to capture the question for the operator" absent universally (correct). UPunt benefits from the engine improvement at zero additional engine cost. Reusable-architecture observation: V1.4.5.2 engine improvement applies to any future deployment with unpopulated `routing_close`, no engine touch required to onboard.
+
+- **Step 6 char-count target relaxed at Step 6 Stop-and-Ask.** V1.4.5.1 baseline char count not captured at Session 31.5 close. Three options surfaced: (i) live endpoint capture (impossible — V1.4.5.1 no longer deployed), (ii) reconstruct locally from git history (~5-10 min), (iii) structural verification only + log V1.4.5.2 as new baseline. D1 selected (iii). Char-count target was D1's Step 1 sharpening upgrade framed as "discipline refinement, not promotion-relevant" — treating it as a hard gate would have been drift from D1's own framing. Structural verification is the binary pass/fail; char count is sanity-check, not independent gate. V1.4.5.2 figures captured for journal as future baseline: streamlineai assembled prompt = 20,041 chars; upunt assembled prompt = 12,838 chars.
+
+- **Pattern 15 sync-rule sharpening candidate logged.** "Capture diagnostic endpoint baseline char count at every version close, so the next session has a known anchor for delta verification on the next structural change." First proof: this session (V1.4.5.1 baseline not captured at Session 31.5 close → can't verify locked delta target this session). 1/2 proofs toward promotion. Second proof candidate triggers if same gap surfaces at a future structural change session.
+
+**Step-by-step execution log:**
+
+- **Step 1 Pattern 22 pre-flight read.** `git pull` clean, working tree at `d8e7f4e` (Session 31.5 journal commit, code-identical to `f984f2e` v1.4.5.1 tag). Brief filename path discrepancy caught (see Decided above). Real file read: `backend/lib/system-prompt.js`. ESM module type confirmed (`node --check` substituted for `node -c`). Function signature confirmed deployment-agnostic. Current cached block order at V1.4.5.1: 1. Identity, 2. KB BEHAVIOUR, 3. INSUFFICIENT DATA RULE, 4. Hard guardrails, 5. Voice profile, 6. VERBATIM RESPONSE SCOPE. INSUFFICIENT DATA TEMPLATE insertion point: new section 7, after VERBATIM RESPONSE SCOPE, dead last in the prompt.
+
+- **Step 2 Stop-and-Ask gate #1 (block content).** Drafted full INSUFFICIENT DATA TEMPLATE block verbatim per Pattern 14 + Standing Rule 4. Also drafted Section 3 forward-pointer edit. Char count delta calculated: +3,487 raw before CONFIG interpolation. Pattern 5 boundary surfaced; three options presented to D1.
+
+- **Step 2b Stop-and-Ask gate #2 (Option B implementation).** D1 selected Option B. D2 produced revised engine block with `${config.routing_close}` interpolation; empty-string guard wrapping section 7 push; ternary forward-pointer on section 3 with B-ii fallback when routing_close empty. Required `streamlineai.js` and `upunt.js` pastes for Standing Rule 1 compliance before generating final replacements.
+
+- **Step 2c Stop-and-Ask gate #3 (final-shape review).** Three final-shape files produced. D1 caught signature_phrase #6 contradiction. D2 produced corrected `streamlineai.js`. D2 voluntary cross-check on the corrected file scanned all CONFIG sources for same-class contradictions against engine TEMPLATE forbidden alternatives. No further contradictions found.
+
+- **Step 4 apply edits.** Operator saved three files to repo. `git status` confirmed 3 files modified. `git diff --stat`: streamlineai.js +58, upunt.js +36, system-prompt.js +297. `node --check` clean on all three (silent success).
+
+- **Step 5 commit + push.** Commit `4243631` pushed to remote. Standing Rule 3 pre-emptive tag check skipped at this step (tag deferred to post-smoke per brief) — fifth-mechanism discipline note logged below. Railway auto-deploy: V1.4.5.2 ACTIVE 58 seconds after push, deployment successful, verified via dashboard screenshot.
+
+- **Step 6 diagnostic structural verification.** Both deployments verified via `/admin/debug/system-prompt/<slug>`. StreamlineAI: prompt_chars 20,041, VERBATIM RESPONSE SCOPE 6 occurrences, INSUFFICIENT DATA TEMPLATE 4 occurrences, MANDATED ROUTING CLOSE 1 occurrence, `${config.routing_close}` leaked literal 0 occurrences (critical interpolation gate PASS), GET STARTED close text 3 occurrences, INSUFFICIENT DATA opener 2 occurrences. UPunt: prompt_chars 12,838, VERBATIM RESPONSE SCOPE 3 occurrences, INSUFFICIENT DATA TEMPLATE 0 occurrences (engine guard correctly skipping), MANDATED ROUTING CLOSE 0 occurrences (correct absence), INSUFFICIENT DATA RULE 1 occurrence, B-ii first clause 1 occurrence, B-ii second clause 1 occurrence, V1.4.5.1 attractor seed 0 occurrences (engine improvement flowed through universally). All structural checks PASS.
+
+- **Step 7 smoke test on `streamlineai-chat.netlify.app`** (browser, hard-refresh applied even though no frontend changes — Standing Rule 2 discipline). 4/4 PASS, see Smoke results below.
+
+- **Step 7b tag operation.** Pre-emptive `git ls-remote --tags origin v1.4.5.2` returned empty. Local `git tag -l v1.4.5.2` returned empty. Tag created at `4243631`. Explicit `git push origin v1.4.5.2` per Session 31.5 fourth-mechanism learning. Final verification: local tag = `v1.4.5.2`, remote tag = `v1.4.5.2 -> 42436317a1c930b655f5e6f7ffd75ac01e633bb0`. Matches local commit `4243631`. Standing Rule 3 satisfied.
+
+**Smoke test results (Step 7) — verbatim bot outputs:**
+
+**Scenario 1 — "Do you have any deployments in healthcare?"** — primary V1.4.5.2 target, INSUFFICIENT DATA Case 1. **PASS.**
+
+> "INSUFFICIENT DATA — don't have case studies or deployment details for healthcare in the knowledge base. Easiest next step is the GET STARTED button at the top of the page — Gareth will be in touch within one business day. Or email gareth@streamlineai.net.au directly if you prefer."
+
+INSUFFICIENT DATA opener + mandated routing close verbatim. Zero callback-promise wording. Zero email-capture offer. Response consists of opener + close, nothing else. TEMPLATE block "Nothing else" directive holding. Session 31.5 Scenario 2 attractor closed.
+
+**Scenario 2 — "I want to talk to Gareth about LeadLock"** — V1.4.5.1 regression check. **PASS.**
+
+> "Easiest next step is the GET STARTED button at the top of this page — that's LeadLock. It'll ask a few quick questions about your situation, capture your details, and Gareth will be in touch within one business day. Or if you'd rather email, that's gareth@streamlineai.net.au."
+
+Routes to GET STARTED + direct email. No mid-conversation email-grab. No bot-side callback-promise — phrasing "Gareth will be in touch within one business day" is acceptable because the trigger is the user's own action on the LeadLock button (which fires the LeadLock notification stack), not a bot-side notification. Response wrapped in quotation marks suggests retrieval hit a KB VERBATIM entry covering ready-to-buy routing; VERBATIM RESPONSE SCOPE block governed the response, INSUFFICIENT DATA TEMPLATE did not fire. Mutual exclusion between the two engine rules working correctly per the interaction clause.
+
+**Scenario 3 — "What does StreamlineAI do?"** — V1.4.4 VERBATIM regression check. **PASS.**
+
+> "StreamlineAI helps businesses use AI in practical ways that save time, reduce hassle, and improve the bottom line. If we haven't already built what you need, give us a tap on the shoulder and we'll see what we can do."
+
+Entry 1 quoted verbatim, wrapped in quotation marks. Zero trailing prose. V1.4.4 VERBATIM RESPONSE SCOPE directive holding. No degradation from V1.4.5.2 engine changes.
+
+**Scenario 4 — "What industries do you work with most?"** — adjacent-phrasing structural test. **PASS** (different shape than S1, structurally correct).
+
+> "Any industry where a small business owner needs AI to handle customer communication, lead intake, visual pre-assessment, or recurring content. Trades, service businesses, retail, health practices, professional services, NDIS providers, side hustles. The product suite isn't industry-specific — it's adapted to whatever business it goes into. What kind of business are you in?"
+
+NOT an INSUFFICIENT DATA case — KB has REFERENCE coverage for industries served. Bot answered confidently from CONTEXT in voice + asked one follow-up question per voice profile style. Critical sub-checks: zero callback-promise wording, zero email-capture offer, zero "flag for Gareth" variants. Adjacent-phrasing class verified: when KB has coverage, bot answers from coverage (correct); when KB doesn't (S1), bot fires INSUFFICIENT DATA + mandated close (correct). No drift toward callback-promise on either path.
+
+**Standing Rule mechanism enumerations this session:**
+
+- **Standing Rule 1 (verify prior version's actual exports before extending) — satisfied with path-identity sub-class.** Brief filename `lib/promptBuilder.js` was wrong; actual `backend/lib/system-prompt.js` confirmed via recursive search at Step 1. Path-assumption sits in same class as Rule 1's export-shape assumption. Logged for Pattern 22 / Rule 1 promotion review at next D1 close-out.
+
+- **Standing Rule 3 (pre-emptive tag check before extending tag namespace) — fifth-mechanism instance logged.** Pre-emptive `git ls-remote --tags origin v1.4.5.2` check skipped at Step 5 commit because tag was deferred to post-smoke per brief. Discipline rule applies regardless of when the tag op happens — the namespace check is a sanity gate, not a sequencing gate. No promotion impact (Rule 3 is operational learning, no promotion needed). Mechanism enumeration only.
+
+- **Standing Rule 4 (final file content not diff) — third proof.** All three files produced as final-shape content (system-prompt.js, streamlineai.js, upunt.js). Corrected streamlineai.js also produced as final-shape after D1 caught the contradiction. No diffs, no patches, no partial blocks. Promote candidate at 3 proofs total (Session 26 + Session 31.5 + Session 31.6).
+
+- **Standing Rule 5 (diagnostic endpoint pre-flight) — satisfied as methodology Pattern 14.** Diagnostic ran on both deployments before smoke. Sharpening candidate already logged at Session 31.6 open (precise byte target with CONFIG-interpolated content) — relaxed in execution because V1.4.5.1 baseline not captured at Session 31.5 close (see Pattern 15 sync-rule sharpening candidate below). Structural verification (not char count) was the operative pass/fail gate.
+
+- **Standing Rule 6 (verify diagnostic command syntax before sending to operator) — promoted at Session 31.5 close-out per 3 proofs; this session adds two further mechanism instances for inventory weight:** Mechanism #4 — `-UseBasicParsing` flag missing on PowerShell 5.x `Invoke-WebRequest` (script-execution warning fires without it). Mechanism #5 — session variable scope drift between deployment diagnostic calls (`$base` was cleared between streamlineai and upunt diagnostics; `$url` rebuilt with empty base became `/admin/debug/system-prompt/upunt` and `Invoke-WebRequest` returned "Invalid URI"). Recovery: re-set `$base` and `$token` explicitly before second diagnostic. Mechanism inventory now at 5 proofs total (Session 27 + Session 30 + Session 31.5 + this session ×2). Promotion already triggered; this is enumeration weight only.
+
+**Observations logged for future pattern accumulation (not Session 31.6 actions):**
+
+- **Pattern 14 working as intended.** Stop-and-Ask gate at Step 2b caught Pattern 5 boundary missed in the brief (StreamlineAI email hardcoded into universal engine code). Stop-and-Ask gate at Step 2c caught signature_phrase #6 contradiction between engine TEMPLATE and voice profile that D2's own diagnostic comment had named but the initial draft had missed. Two same-prompt direct contradictions averted before commit. Pattern 14 is doing the work it's supposed to do.
+
+- **D2 voluntary cross-check discipline upgrade.** On the corrected `streamlineai.js`, D2 voluntarily scanned all CONFIG sections (signature_phrases, example_messages, hard_guardrails) for the same contradiction class against all four engine TEMPLATE forbidden alternatives (a)-(d), not just the called-out line. Single instance, not Standing Rule candidate yet. Worth a journal note for pattern accumulation — when an engine rule names a specific phrasing as forbidden, every CONFIG file the engine reads should be scanned for that phrasing class, not just the surface-level mention. Logging for future Standing Rule emergence.
+
+- **Communication discipline observation — Step 6 turn surfaced option references (i)/(ii)/(iii) without the option set itself reaching D1.** D1 paused to request full option set; D2 surfaced it cleanly on the second turn. Pattern 14 territory: Stop-and-Ask works only when the question content (including option definitions) reaches D1. Single instance, not Standing Rule candidate yet. Log for pattern accumulation. Lesson: when option references appear in a message to D1, the option definitions must appear in the same message (or have been established earlier in the session with explicit numbering preserved). Implicit references to earlier-turn options are a discipline failure mode.
+
+- **Forward-pointer architecture observation (not Session 31.6 scope).** `streamlineai.js` voice_profile.forbidden_behaviours line "Speculating about whether something specific can be built — route to consultation instead" embeds deployment-specific routing language in a CONFIG behavioural rule. Same architectural class as the routing_close issue resolved via Option B this session. CONFIG is the correct layer for this so no Pattern 5 violation, but if a unified routing primitive (referenced by voice_profile, hard_guardrails, AND engine TEMPLATE) becomes useful at the first paying-client deployment, this is the next candidate for primitive extraction. Log only — not Session 31.6 action.
+
+**Pattern 5 boundary observation (engine-tier work cleanly executed):**
+
+V1.4.5.2 was engine-tier work (CODE-tier per Pattern 5), distinct from V1.4.5.1's CONFIG-tier work (Session 31.5). The split worked correctly: engine code (`backend/lib/system-prompt.js`) holds the rule SHAPE (forbidden alternatives, multi-turn invariance, interaction-with-VERBATIM clause). CONFIG files (`streamlineai.js`, `upunt.js`) hold per-deployment content (routing_close text, contact_email). Same engine code produces different output per deployment based on CONFIG state alone — no engine branching, no deployment-slug guards. CONFIG-driven shape working as architected.
+
+**Broken:** Nothing.
+
+**Cost estimate per 100 messages:** Unchanged from V1.4.5.1 except cache-write delta. V1.4.5.2 increased streamlineai assembled prompt from estimated ~16,500 chars (V1.4.5.1) to 20,041 chars (V1.4.5.2). Turn 1 after deploy invalidated cache; turns 2+ resume cache-read pattern. Per Build Standard #1 awareness. Acceptable cost, structural fix value justifies. UPunt prompt size effectively unchanged (12,838 chars; B-ii fallback adds ~200 chars, attractor seed removal nets out closely).
+
+**Next:**
+
+- D1 close-out actions queued (handback below).
+- V1.4.6 free-tool proxy migration still queued post-V1.4.5.2.
+- Build journal at this entry crosses ~1,650 lines (approx) — Pattern 15 archive pass remains Session 32 first item.
+
+**Files changed at V1.4.5.2:**
+
+In git repo:
+- Modified: `backend/lib/system-prompt.js` (+297/-89 lines: V1.4.5.2 header comment block + ternary forward-pointer + new INSUFFICIENT DATA TEMPLATE section)
+- Modified: `backend/config/streamlineai.js` (+58/-X lines: V1.4.5.2 header note + routing_close field + contact_email field + signature_phrase #6 dropped from voice_profile)
+- Modified: `backend/config/upunt.js` (+36/-0 lines: V1.4.5.2 header note + routing_close empty string + contact_email empty string)
+- Commit: `4243631` (verified on remote: pushed via `git push`, no tag follow-through this commit)
+- Tag: `v1.4.5.2` at commit `4243631` (verified on remote: `42436317a1c930b655f5e6f7ffd75ac01e633bb0 refs/tags/v1.4.5.2`)
+
+Railway deployment: V1.4.5.2 ACTIVE, Deployment successful, verified via dashboard screenshot at 58 seconds post-push.
+
+**POSTSCRIPT — none this session.**

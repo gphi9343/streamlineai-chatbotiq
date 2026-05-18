@@ -8,3 +8,5 @@ node_modules/
 .idea/
 dist/
 build/
+# Diagnostic endpoint dumps from /admin/debug/system-prompt/
+*-prompt-v*.txt

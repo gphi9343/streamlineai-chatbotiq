@@ -1,114 +1,118 @@
 // backend/lib/system-prompt.js
 //
-// V1.4.4 — VERBATIM RESPONSE SCOPE block relocated to sit AFTER the voice
-// profile in the cached system prompt. Voice profile carve-out lives in
-// CONFIG (streamlineai.js, upunt.js) — see each deployment's voice_profile.style.
+// V1.4.5.2 — INSUFFICIENT DATA TEMPLATE block added as new top-level section
+// at the end of the cached system prompt. Mandated routing close text comes
+// from CONFIG (config.routing_close) — engine code holds the SHAPE rule and
+// the forbidden-alternatives enumeration; CONFIG holds the per-deployment
+// close text. Pattern 5 boundary preserved.
 //
-// Surfaced by Session 26 V1.4.3 smoke test:
+// Surfaced by Session 31.5 V1.4.5.1 smoke test:
 //
-//   V1.4.3 directive was provably present in the deployed prompt (verified
-//   via /admin/debug/system-prompt/streamlineai). Retrieval correctly
-//   surfaced the VERBATIM entries for Tests B and D. Model read the rule,
-//   read the entry, quoted correctly — then extended the quote on Tests B
-//   and C with content explicitly named-and-forbidden by the live directive.
+//   V1.4.5.1 CONFIG-only patch rewrote voice profile example_messages
+//   #10/#11/#13 and added hard_guardrail #17 prohibiting mid-conversation
+//   email-capture. Two of three smoke scenarios PASS. Scenario 2 FAIL
+//   (INSUFFICIENT DATA Case 1, "Do you have any deployments in healthcare?")
+//   — bot generated functionally identical callback-promise close ("Want me
+//   to flag this for Gareth so he can tell you what's been built in that
+//   space?") from a deeper training-data attractor that example_messages
+//   alone cannot override.
 //
-//   Test B ("I'm not technical, can I still use this?"): Entry 19 quoted
-//   verbatim, then extended with anti-pattern (b) — synthesised supportive
-//   prose ("Most of our clients aren't technical — the tools are built to
-//   be simple to use, not impressive to look at"). No fabricated values,
-//   no trace to CONTEXT. Forbidden by V1.4.3 directive. Generated anyway.
+//   D2 Session 31.5 diagnosis: "deeper shaping problem than Edit B/D can
+//   reach via example-driven CONFIG."
 //
-//   Test C ("What does StreamlineAI do?"): Entry 1 quoted verbatim, then
-//   extended with anti-pattern (c) — "what this means in practice"
-//   elaboration introducing product names not in this CONTEXT block.
-//   Forbidden by V1.4.3 directive. Generated anyway.
+//   Same class as V1.4.4 VERBATIM RESPONSE SCOPE iteration history Sessions
+//   25-27 (three CONFIG patches delivered partial wins before structural fix
+//   at V1.4.4 closed the class). V1.4.5.2 skips the intermediate CONFIG
+//   patches and goes straight to structural fix at the engine layer.
 //
-//   Test D ("How much does it cost?"): Entry 10 quoted verbatim, trailing
-//   "What kind of business are you running?" — content-free transition,
-//   passes V1.4.3 shape (2). Pricing has a definitive numeric answer with
-//   no tonal pull to extend. Single-turn pricing control clean.
+// Structural diagnosis (Session 31.5 handback to D1, carried into 31.6 brief):
 //
-// Structural diagnosis (Session 26 handback to D1):
+//   The existing INSUFFICIENT DATA RULE section instructed the model to
+//   "offer to capture the question for the operator" after the
+//   INSUFFICIENT DATA opener. That permissive instruction is itself a
+//   Pattern 11 violation — vague scope ("offer to capture") gets read
+//   liberally by the model, surfaces as "Want me to flag this for Gareth?",
+//   "Want to leave your email?", "Have Gareth get back to you", etc.
 //
-//   Voice profile's "Acknowledge the prospect's situation back to them in
-//   your own words before answering" instruction tensions against VERBATIM
-//   RESPONSE SCOPE. Voice profile was placed last in the cached block per
-//   Pattern 8 (attention-weighting — models attend most strongly to
-//   information near the end). VERBATIM RESPONSE SCOPE was placed in the
-//   middle of the prompt, embedded in KB BEHAVIOUR. Same Pattern 8 logic
-//   running in the wrong direction: the rule is far from response position,
-//   the voice instruction is near response position, voice instruction wins.
+//   Voice profile signature_phrase #6 ("Good question — let me flag that
+//   for Gareth.") reinforced the attractor from the voice side. Voice
+//   profile carve-out for VERBATIM-from-CONTEXT (added V1.4.4) does not
+//   reach this case because INSUFFICIENT DATA fires when no CONTEXT
+//   anchors the response — the carve-out has no trigger condition.
 //
-//   Test D passes because pricing has no tonal pull to extend. Tests B and C
-//   answer questions where there's natural pull to elaborate ("can I still
-//   use this?" wants reassurance; "what does StreamlineAI do?" wants
-//   description). The voice profile's "acknowledge in your own words"
-//   instruction is read as license to extend; the V1.4.3 directive's
-//   "framing must trace to CONTEXT" rule is forgotten by then.
+//   Result: the model resolved the rule conflict by drifting toward
+//   training-data attractors (helpful chatbot offers contact capture) that
+//   sound aligned with the voice profile's "moves toward a clear next step"
+//   instruction but violate the architectural rule that ChatbotIQ never
+//   captures leads.
 //
-// V1.4.4 changes (D1 Session 27 decision — Option 1 + Option 2 combined):
+// V1.4.5.2 changes (D1 Session 31.6 decision — Option B with B-ii fallback):
 //
-//   1. VERBATIM RESPONSE SCOPE block RELOCATED out of the KB BEHAVIOUR
-//      section and placed as a new top-level section AFTER the voice
-//      profile. The block sits last in the cached prompt, so the same
-//      Pattern 8 attention-weighting that previously favoured the voice
-//      instruction now favours the scope rule.
+//   1. INSUFFICIENT DATA RULE section: "Then offer to capture the question
+//      for the operator" line replaced with a forward-pointer to the new
+//      INSUFFICIENT DATA TEMPLATE section at the end of the prompt. When
+//      CONFIG.routing_close is populated, the forward-pointer routes to
+//      the TEMPLATE. When CONFIG.routing_close is empty (frozen testbed
+//      deployments like UPunt), the forward-pointer falls back to a third
+//      variant: "briefly acknowledge that you don't have the answer. Do
+//      not offer to capture the user's email or promise a callback." This
+//      removes the attractor seed universally while gracefully degrading
+//      when the TEMPLATE block is not rendered.
 //
-//   2. Voice profile carve-out applied in CONFIG (streamlineai.js,
-//      upunt.js). The "acknowledge in your own words" instruction in each
-//      style field gets a trailing exception sentence naming VERBATIM-from-
-//      CONTEXT as the case where acknowledgement is content-free transition
-//      only. Engine-side directive vocabulary inside operator-curated
-//      voice profile content is a documented Pattern 5 trade — D1 owns the
-//      CONFIG field, D1 approves the wording, precision wins over softer
-//      language (Pattern 11 — vague permissive scope gets read liberally).
+//   2. New top-level section INSUFFICIENT DATA TEMPLATE added at the END
+//      of the cached prompt. Section is only rendered when
+//      config.routing_close is a non-empty string. Mandated routing close
+//      text comes from config.routing_close. Block structure parallels
+//      V1.4.4 VERBATIM RESPONSE SCOPE: numbered rules + explicit examples
+//      + multi-turn invariance + interaction-with-VERBATIM clause.
 //
-// V1.4.3 substantive content preserved verbatim:
-//
-//   - Strict framing shapes (1) and (2)
-//   - Three named anti-patterns (a), (b), (c)
-//   - Multi-turn invariance clause
-//   - VERBATIM PRECEDENCE substitution rule (stays in KB BEHAVIOUR)
-//   - NEVER FABRICATE SPECIFIC FACTUAL VALUES rule (stays in KB BEHAVIOUR)
-//
-// What stays in KB BEHAVIOUR after V1.4.4:
-//
-//   - REFERENCE vs VERBATIM rendering rules
-//   - VERBATIM PRECEDENCE (substitution rule — independent of scope rule)
-//   - NEVER FABRICATE SPECIFIC FACTUAL VALUES (independent of scope rule)
-//   - Empty-CONTEXT fallback to INSUFFICIENT DATA
-//
-//   These are CONTENT-handling rules (what to quote, what not to invent).
-//   They belong in KB BEHAVIOUR.
-//
-// What moves to its own dedicated section last in the prompt:
-//
-//   - VERBATIM RESPONSE SCOPE — the SHAPE rule for VERBATIM-anchored responses.
-//
-//   This is a RESPONSE-shape rule (how long the response is, what its
-//   components are). It belongs near the response position so attention-
-//   weighting works for it, not against it.
-//
-// Architecture (cached block order at V1.4.4):
+// Architecture (cached block order at V1.4.5.2):
 //
 //   1. Identity (deployment_name, domain)
 //   2. KB rendering rules (REFERENCE/VERBATIM behaviour, VERBATIM PRECEDENCE,
 //      NEVER FABRICATE) — content rules
-//   3. INSUFFICIENT DATA rule
+//   3. INSUFFICIENT DATA rule (forward-points to TEMPLATE or falls back to
+//      B-ii variant)
 //   4. Hard guardrails
 //   5. Voice profile (six fields including carve-out in style)
-//   6. VERBATIM RESPONSE SCOPE — NEW LAST POSITION
+//   6. VERBATIM RESPONSE SCOPE (V1.4.4 — response shape for VERBATIM)
+//   7. INSUFFICIENT DATA TEMPLATE (V1.4.5.2 — response shape for refusals;
+//      only rendered when config.routing_close is non-empty)
 //
 // Pattern 8 (methodology, attention-weighting): information near the end of
-// the prompt is attended to most strongly. V1.4.3 placed voice profile last
-// for that reason. V1.4.4 keeps voice profile near the end but places the
-// scope rule AFTER it — the rule that the voice profile must yield to is
-// the rule the model encounters last, immediately before generating.
+// the prompt is attended to most strongly. V1.4.4 placed VERBATIM RESPONSE
+// SCOPE last. V1.4.5.2 places INSUFFICIENT DATA TEMPLATE after it — both
+// shape rules sit at the end where attention-weighting bites hardest. They
+// have mutually exclusive triggers (VERBATIM RESPONSE SCOPE = quote
+// anchored, INSUFFICIENT DATA TEMPLATE = no anchor), so position ordering
+// between them is not behaviourally significant. INSUFFICIENT DATA TEMPLATE
+// goes last because it is the newer rule and the structural-fix proof point
+// for the methodology candidate.
 //
 // Pattern 11 (methodology, permissive rules require concrete scope): the
-// scope rule's strict framing shapes (1) and (2) and three named anti-
-// patterns are unchanged from V1.4.3 — precision wording is preserved, only
-// position changes.
+// existing INSUFFICIENT DATA RULE's "offer to capture the question for the
+// operator" instruction was the seed of the attractor — vague permissive
+// scope read liberally. V1.4.5.2 replaces it with concrete forward-pointer
+// or concrete fallback ("do not offer to capture, do not promise callback").
+// The TEMPLATE block itself applies Pattern 11 to the close shape:
+// mandated text verbatim + enumerated forbidden alternatives (a)-(d) where
+// (d) names the behaviour class explicitly to close phrasing-substitution
+// drift.
+//
+// Pattern 5 (CONFIG vs CODE): mandated close text comes from CONFIG
+// (config.routing_close). Engine code holds the rule SHAPE (forbidden
+// alternatives, multi-turn invariance, interaction clause). CONFIG holds
+// the per-deployment content (the actual close text). UPunt CONFIG passes
+// empty string for routing_close — engine block becomes no-op for UPunt,
+// section 3 falls back to B-ii variant. Engine improvement applies
+// universally without per-deployment branching.
+//
+// V1.4.4 substantive content preserved verbatim:
+//
+//   - VERBATIM RESPONSE SCOPE block in its V1.4.4 final position
+//   - Voice profile rendering and ordering
+//   - All KB BEHAVIOUR rules
+//   - All other sections unchanged
 
 /**
  * Build the cached system prompt from CONFIG.
@@ -188,6 +192,24 @@ export function buildSystemPrompt(config) {
   // V1.4.1: case-3 exclusion list extended to cover "specific factual values".
   // V1.4.1: case-3 wording made domain-agnostic (uses config.domain instead
   // of hardcoded racing examples).
+  // V1.4.5.2: "Then offer to capture the question for the operator" line
+  // replaced with forward-pointer to INSUFFICIENT DATA TEMPLATE section
+  // (when config.routing_close populated) or B-ii fallback variant (when
+  // config.routing_close empty). Removes attractor seed universally.
+  const routingClosePresent =
+    typeof config.routing_close === 'string' &&
+    config.routing_close.trim().length > 0;
+
+  const insufficientDataCloseInstruction = routingClosePresent
+    ? `Then deliver the routing close exactly as specified in the ` +
+      `INSUFFICIENT DATA TEMPLATE section at the end of this prompt. Do not ` +
+      `synthesise an alternative close, do not offer to capture the user's ` +
+      `email or contact details, and do not promise any callback or follow-` +
+      `up. The TEMPLATE section governs the exact wording.`
+    : `Then briefly acknowledge that you don't have the answer. Do not offer ` +
+      `to capture the user's email or contact details, and do not promise ` +
+      `any callback or follow-up.`;
+
   sections.push(
     `INSUFFICIENT DATA RULE\n` +
     `\n` +
@@ -196,7 +218,7 @@ export function buildSystemPrompt(config) {
     `\n` +
     `  "INSUFFICIENT DATA — [brief reason]."\n` +
     `\n` +
-    `Then offer to capture the question for the operator.\n` +
+    `${insufficientDataCloseInstruction}\n` +
     `\n` +
     `When you say INSUFFICIENT DATA, do not then answer the question from ` +
     `general knowledge in the same turn.\n` +
@@ -248,6 +270,9 @@ export function buildSystemPrompt(config) {
   //   SCOPE follows it (see next push). Voice profile remains near the end,
   //   immediately before the scope rule. The rule the voice profile must
   //   yield to is the rule the model encounters last.
+  // V1.4.5.2: VERBATIM RESPONSE SCOPE remains positioned after voice profile;
+  //   INSUFFICIENT DATA TEMPLATE is appended after VERBATIM RESPONSE SCOPE
+  //   when config.routing_close is populated.
   // All six voice fields rendered if populated. Each field rendered only if
   // it has content — empty arrays/strings are skipped, not echoed as headers.
   const voiceSection = renderVoiceProfile(config.voice_profile);
@@ -267,6 +292,12 @@ export function buildSystemPrompt(config) {
   //   rule (middle in V1.4.3). V1.4.4 places the scope rule LAST so the
   //   attention-weighting runs in its favour. Voice profile carve-out
   //   (Option 2, in CONFIG style fields) reinforces from the voice side.
+  //
+  // V1.4.5.2: VERBATIM RESPONSE SCOPE is no longer the final section when
+  //   config.routing_close is populated — INSUFFICIENT DATA TEMPLATE follows
+  //   it. The two rules have mutually exclusive triggers (VERBATIM SCOPE =
+  //   quote anchored, INSUFFICIENT DATA TEMPLATE = no anchor), so the
+  //   relative position between them is not behaviourally significant.
   sections.push(
     `VERBATIM RESPONSE SCOPE\n` +
     `\n` +
@@ -331,6 +362,96 @@ export function buildSystemPrompt(config) {
     `again) or hits nothing relevant (apply INSUFFICIENT DATA). It does not ` +
     `entitle you to extend the turn-1 quote with synthesised turn-2 content.`
   );
+
+  // ----- INSUFFICIENT DATA TEMPLATE (V1.4.5.2 — new final section) -----
+  // Only rendered when config.routing_close is a non-empty string. UPunt
+  // and any future deployment that lacks a routing close ships without
+  // this section; the INSUFFICIENT DATA RULE section above falls back to
+  // its B-ii variant for those deployments.
+  //
+  // Mandated close text comes from config.routing_close — Pattern 5 split.
+  // Engine code holds the rule SHAPE (forbidden alternatives, multi-turn
+  // invariance, interaction-with-VERBATIM clause). CONFIG holds the
+  // per-deployment content.
+  if (routingClosePresent) {
+    sections.push(
+      `INSUFFICIENT DATA TEMPLATE\n` +
+      `\n` +
+      `This rule applies whenever the INSUFFICIENT DATA RULE earlier in this ` +
+      `prompt fires — that is, whenever the CONTEXT block provided this turn ` +
+      `does not contain information that answers the user's question. The ` +
+      `rule is the last rule in this prompt deliberately — it takes ` +
+      `precedence over the voice profile's stylistic instructions and over ` +
+      `any general training-data tendency to offer follow-up, callback, or ` +
+      `contact-capture mechanics.\n` +
+      `\n` +
+      `When the INSUFFICIENT DATA RULE fires, your response consists of: the ` +
+      `"INSUFFICIENT DATA — [brief reason]" opener, then the mandated routing ` +
+      `close below, verbatim. Nothing else.\n` +
+      `\n` +
+      `MANDATED ROUTING CLOSE — quote this text exactly, do not paraphrase, ` +
+      `do not synthesise variations, do not add extra sentences:\n` +
+      `\n` +
+      `  "${config.routing_close}"\n` +
+      `\n` +
+      `The close routes the user to the channel(s) named in the close text ` +
+      `above. These are the only valid routing channels. Any other close ` +
+      `shape is forbidden.\n` +
+      `\n` +
+      `FORBIDDEN ALTERNATIVES — these are the most commonly drifted-toward ` +
+      `closes from training data, and all of them are prohibited regardless ` +
+      `of phrasing:\n` +
+      `\n` +
+      `  (a) Offers to flag, log, note, or record the question for the ` +
+      `operator. Examples of forbidden phrasings: "Want me to flag this for ` +
+      `Gareth?", "I can flag this for Gareth", "Let me make a note of that ` +
+      `for Gareth", "I'll log this for Gareth to look at". The bot has no ` +
+      `notification mechanism — these phrasings imply one and create a ` +
+      `downstream wait that will not be honoured.\n` +
+      `\n` +
+      `  (b) Offers to accept or capture the user's email, phone number, or ` +
+      `other contact details mid-conversation. Examples of forbidden ` +
+      `phrasings: "Want to leave your email?", "Want me to grab your email?", ` +
+      `"Drop your email and I'll have Gareth get back to you", "Can I take ` +
+      `your details?". The bot does not capture contact data. Contact ` +
+      `capture happens through the user's own action on the routing channel ` +
+      `named in the mandated close, not mid-conversation.\n` +
+      `\n` +
+      `  (c) Promises of callback, follow-up, or notification dependent on ` +
+      `operator action triggered from this conversation. Examples of ` +
+      `forbidden phrasings: "Gareth will come back to you", "Have Gareth get ` +
+      `back to you", "I'll get Gareth to circle back", "Gareth will reach ` +
+      `out", "Someone will follow up". The bot cannot trigger operator ` +
+      `action from a conversation — promising callback creates a false ` +
+      `expectation.\n` +
+      `\n` +
+      `  (d) Any variant of (a), (b), or (c) using different wording, softer ` +
+      `phrasing, or partial substitution. The forbidden behaviour is the ` +
+      `BEHAVIOUR class — offering flag/capture/callback mechanics — not the ` +
+      `specific phrasings listed. If the close suggests the operator will be ` +
+      `notified by anything other than the user's own action on the channel ` +
+      `named in the mandated close, it is forbidden regardless of how it is ` +
+      `worded.\n` +
+      `\n` +
+      `This rule is invariant across turns. If the user pushes back, asks ` +
+      `again, rephrases, or persists past the first INSUFFICIENT DATA ` +
+      `response, every subsequent INSUFFICIENT DATA turn uses the same ` +
+      `mandated routing close. Do not relax the rule on turn 2 because turn 1 ` +
+      `already delivered it. Do not interpret user persistence as license to ` +
+      `offer contact capture or callback as a "stronger" close. The same ` +
+      `routing channel(s) named in the mandated close remain the only valid ` +
+      `routes on every turn.\n` +
+      `\n` +
+      `INTERACTION WITH VERBATIM RESPONSE SCOPE: if a VERBATIM entry in the ` +
+      `CONTEXT block covers the user's question, the VERBATIM RESPONSE SCOPE ` +
+      `rule above applies and this rule does not fire. INSUFFICIENT DATA ` +
+      `TEMPLATE only fires when no entry in the CONTEXT block answers the ` +
+      `question. The two rules have mutually exclusive triggers — VERBATIM ` +
+      `RESPONSE SCOPE governs responses anchored on a quote, INSUFFICIENT ` +
+      `DATA TEMPLATE governs responses where no quote is available. Do not ` +
+      `blend the two rules on a single turn.`
+    );
+  }
 
   return sections.join('\n\n');
 }

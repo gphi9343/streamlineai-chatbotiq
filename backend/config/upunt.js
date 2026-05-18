@@ -33,6 +33,21 @@
 // carve-out applies the same constraint as a defensive measure across
 // deployments.
 //
+// V1.4.5.2 — Two new CONFIG fields added to match the StreamlineAI shape
+// for the V1.4.5.2 INSUFFICIENT DATA TEMPLATE engine block:
+//   routing_close: empty string (UPunt is frozen testbed, no real-prospect
+//     risk, no current contact channel configured for the racing audience)
+//   contact_email: empty string (no UPunt-specific email address in use)
+// Engine behaviour when routing_close is empty: INSUFFICIENT DATA TEMPLATE
+// block is not rendered (Pattern 5 split preserved — engine code holds the
+// guard, CONFIG holds the toggle). INSUFFICIENT DATA RULE section falls
+// back to its B-ii variant: "Then briefly acknowledge that you don't have
+// the answer. Do not offer to capture the user's email or promise a
+// callback." This removes the V1.4.5.1 attractor seed ("offer to capture
+// the question for the operator") universally — UPunt benefits from the
+// improvement at zero engine cost, per Pattern 5 frozen-deployment rule
+// (engine improvements that apply universally still flow through).
+//
 // To deploy this engine for a different client: clone this file as
 // `config/<client>.js`, swap the values, and use a corresponding
 // admin_token_env_var name (e.g. ADMIN_TOKEN_STREAMLINEAI).
@@ -82,6 +97,23 @@ export const upuntConfig = {
     'https://streamlineai-chatbotiq.netlify.app',
   ],
 
+  // V1.4.5.2 — Mandated routing close for INSUFFICIENT DATA responses.
+  // Empty string disables the INSUFFICIENT DATA TEMPLATE block in
+  // backend/lib/system-prompt.js for this deployment. UPunt is frozen
+  // testbed (Session 22 lock), no current contact channel configured for
+  // racing audience prospects. Engine falls back to the B-ii variant in
+  // the INSUFFICIENT DATA RULE section — generic acknowledgement with
+  // explicit prohibition on email-capture and callback-promise behaviours.
+  // To enable routing on UPunt in future, populate this string with the
+  // verbatim mandated close (e.g. an email address or Telegram channel
+  // reference) and the engine block renders automatically.
+  routing_close: '',
+
+  // V1.4.5.2 — Direct contact email. Empty string for UPunt. Kept present
+  // in CONFIG schema (rather than omitted) so future deployments cloning
+  // upunt.js as a template see the field and know to populate it.
+  contact_email: '',
+
   // Voice profile — populated V1.4
   // Format is the productised onboarding deliverable. Same shape for any
   // future ChatbotIQ deployment. No client should ever need to provide
@@ -89,6 +121,10 @@ export const upuntConfig = {
   //
   // V1.4.4 — style field amended with VERBATIM-from-CONTEXT carve-out
   // (final paragraph). All other fields unchanged from V1.4 lock.
+  // V1.4.5.2 — voice profile content unchanged. The V1.4.5.2 engine fix
+  // is no-op on UPunt (routing_close empty); UPunt's INSUFFICIENT DATA
+  // voice examples (#11/#12/#13 in example_messages below) continue to
+  // govern the refusal voice as before.
   voice_profile: {
     tone: ['Warm', 'cheeky', 'Aussie-casual'],
 

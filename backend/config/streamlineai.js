@@ -33,6 +33,31 @@
 // conversation + concrete alternative routing. Pattern 11 application —
 // permissive rules require concrete scope.
 //
+// V1.4.5.2 — INSUFFICIENT DATA TEMPLATE structural fix at engine layer
+// (Session 31.6). V1.4.5.1 closed the email-capture drift class on the
+// example layer; Scenario 2 smoke FAILED because a deeper training-data
+// attractor surfaced as callback-promise close ("Want me to flag this for
+// Gareth?"). Engine-layer fix in backend/lib/system-prompt.js adds
+// INSUFFICIENT DATA TEMPLATE block at the end of the cached prompt with
+// mandated routing close text + enumerated forbidden alternatives. This
+// file contributes:
+//   (1) per-deployment close text via two new CONFIG fields: routing_close
+//       (string, the verbatim mandated close) and contact_email (string,
+//       the direct email address, kept independent so future deployments
+//       can reference it from hard_guardrails or voice profile without
+//       duplicating).
+//   (2) voice-side reinforcement of the engine TEMPLATE: signature_phrase
+//       #6 from V1.4.5.1 ("Good question — let me flag that for Gareth.")
+//       DROPPED. Direct contradiction with engine TEMPLATE forbidden
+//       alternative (a) which prohibits "I can flag this for Gareth" —
+//       cached system prompt cannot license a phrase in voice profile that
+//       engine TEMPLATE forbids. Dropped, not replaced — replacing risks
+//       seeding a fresh attractor. Voice profile now has 9 signature
+//       phrases; sufficient. No renumbering needed (comments don't
+//       reference signature phrases by index).
+// Pattern 5 split preserved — engine code holds the SHAPE rule, CONFIG
+// holds the per-deployment content.
+//
 // KB curation happens post-V1.4 ship via the admin form.
 // ~30 entries planned: services overview (REFERENCE), per-product pages
 // (REFERENCE — 9 products including NewsletterIQ), pricing (VERBATIM),
@@ -84,11 +109,41 @@ export const streamlineaiConfig = {
     'https://streamlineai-chat.netlify.app',
   ],
 
+  // V1.4.5.2 — Mandated routing close for INSUFFICIENT DATA responses.
+  // Read by the INSUFFICIENT DATA TEMPLATE block in backend/lib/system-prompt.js.
+  // The bot quotes this string verbatim after the "INSUFFICIENT DATA — [brief
+  // reason]" opener whenever a turn falls under the INSUFFICIENT DATA RULE.
+  //
+  // Pattern 5 split: engine code holds the rule SHAPE (forbidden alternatives,
+  // multi-turn invariance, interaction-with-VERBATIM clause). This field holds
+  // the per-deployment close text. To change the close text without an engine
+  // touch, edit this string and redeploy. To remove the close entirely (frozen
+  // testbed deployments), set this to an empty string — the engine block
+  // becomes a no-op and the INSUFFICIENT DATA RULE section falls back to a
+  // generic acknowledgement variant that still prohibits email-capture and
+  // callback-promise behaviours.
+  routing_close:
+    "Easiest next step is the GET STARTED button at the top of the page — " +
+    "Gareth will be in touch within one business day. Or email " +
+    "gareth@streamlineai.net.au directly if you prefer.",
+
+  // V1.4.5.2 — Direct contact email. Kept separate from routing_close so
+  // future deployments can reference this independently (e.g. from
+  // hard_guardrails phrasing, or voice profile example_messages) without
+  // duplicating the email address. Optional — empty string disables.
+  contact_email: 'gareth@streamlineai.net.au',
+
   // Voice profile — locked Session 22. Drop-in from StreamlineAI master file.
   // V1.4.4 — style field amended with VERBATIM-from-CONTEXT carve-out
   // (final two sentences). All other fields unchanged from Session 22 lock.
   // V1.4.5.1 — example_messages #10/#11/#13 rewritten per Session 31.5
   // brief Edits A/B/C. Style field unchanged.
+  // V1.4.5.2 — signature_phrase "Good question — let me flag that for
+  // Gareth." DROPPED. Direct contradiction with engine TEMPLATE forbidden
+  // alternative (a) added this session. Drop, not replace — replacing
+  // risks seeding a fresh attractor. Nine signature_phrases remain;
+  // sufficient. example_messages unchanged from V1.4.5.1 (already
+  // routing-aligned). Style field unchanged.
   voice_profile: {
     tone: ['calm', 'plain-spoken', 'practical', 'warm'],
 
@@ -114,7 +169,8 @@ export const streamlineaiConfig = {
       "That sounds like a [LeadLock/TriageIQ/NewsletterIQ/ChatbotIQ] fit.",
       "We've done something similar for [industry].",
       "Want me to set up a quick call with Gareth?",
-      "Good question — let me flag that for Gareth.",
+      // V1.4.5.2 — "Good question — let me flag that for Gareth." dropped here.
+      // Direct contradiction with engine TEMPLATE forbidden alternative (a).
       "Here's the next step.",
       "Happy to walk you through it.",
       "Most of our work is with businesses your size.",

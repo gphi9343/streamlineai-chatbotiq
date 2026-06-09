@@ -1,5 +1,16 @@
 // backend/lib/anthropic.js
 //
+// V1.4.7 addition (Session 33):
+// - New non-streaming sibling `proxyMessage({model, max_tokens, system, messages})`
+//   for the free-tool Railway proxy endpoint (/free-tool-proxy in server.js).
+//   Reuses the SDK `client` already wired here. Passes the CALLER'S model and
+//   max_tokens through (NOT the hardcoded MODEL / MAX_TOKENS constants — free
+//   tools send their own: DecisionIQ 1200/800, StaffTalkIQ 1500/1000).
+//   Returns { ok, body } on success / { ok:false, error } via classifyAnthropicError.
+// - `classifyAnthropicError` now exported so the proxy route shares one error
+//   taxonomy with streamChat (Build Standard #2).
+// - streamChat and its contract are UNCHANGED.
+//
 // V1.2 changes from V1.1:
 // - New optional `contextBlock` parameter. When present, it is injected as
 //   a user-role message immediately before the current user message. This
@@ -109,7 +120,41 @@ export async function streamChat({
 }
 
 
-function classifyAnthropicError(err) {
+/**
+ * Non-streaming Anthropic call for the free-tool proxy (V1.4.7).
+ *
+ * Reuses the SDK `client` instantiated at module top. Does NOT use the
+ * streaming path, does NOT use the hardcoded MODEL / MAX_TOKENS constants —
+ * the free tools supply their own model and max_tokens in the request body.
+ *
+ * Returns the SDK response object as `body`. The free-tool frontends read
+ * `data.content[0].text`; the SDK response preserves `.content[0].text`, so
+ * returning it as JSON matches the old Netlify proxy's verbatim-passthrough
+ * contract for that access path.
+ *
+ * @param {object} params
+ * @param {string} params.model
+ * @param {number} params.max_tokens
+ * @param {string|Array} [params.system] - optional system prompt
+ * @param {Array<{role: string, content: string}>} params.messages
+ * @returns {Promise<{ok: true, body: object} | {ok: false, error: object}>}
+ */
+export async function proxyMessage({ model, max_tokens, system, messages }) {
+  try {
+    const body = await client.messages.create({
+      model,
+      max_tokens,
+      ...(system ? { system } : {}),
+      messages,
+    });
+    return { ok: true, body };
+  } catch (err) {
+    return { ok: false, error: classifyAnthropicError(err) };
+  }
+}
+
+
+export function classifyAnthropicError(err) {
   const status = err.status || err.response?.status;
 
   if (err.name === 'APIConnectionTimeoutError' || err.code === 'ETIMEDOUT') {

@@ -1,5 +1,21 @@
 // backend/server.js
 //
+// V1.4.7 (Session 33) — Add standalone POST /free-tool-proxy endpoint for
+// DecisionIQ + StaffTalkIQ, which 504 on Netlify's synchronous-function wall
+// (~28-30s) for their heaviest calls. Railway has no short execution wall.
+//
+// The new endpoint is DELIBERATELY SEPARATE from /chat. It does NOT:
+//   - resolve a deployment via getDeploymentByOrigin (free tools have no
+//     deployment config and would be strict-rejected)
+//   - touch Supabase, KB retrieval, SSE, or the system-prompt cache
+// It only forwards { model, max_tokens, system, messages } to Anthropic
+// (non-streaming, via proxyMessage in lib/anthropic.js) and returns the JSON.
+// Ports the Netlify proxy.js contract: caller supplies model + max_tokens.
+//
+// CORS: the two free-tool origins are appended to ALLOWED_ORIGINS (Railway
+// env var) — no code change to the allow-list. Passing CORS is sufficient
+// for this route because it never runs deployment dispatch.
+//
 // V1.4.4 — Patch increment. VERBATIM RESPONSE SCOPE block relocated to sit
 // AFTER voice profile in cached system prompt (system-prompt.js). Voice
 // profile carve-out added to style field in both deployments' CONFIG
@@ -48,7 +64,7 @@
 import express from 'express';
 import cors from 'cors';
 
-import { streamChat } from './lib/anthropic.js';
+import { streamChat, proxyMessage } from './lib/anthropic.js';
 import { makeError, serialiseError, sendError } from './lib/errors.js';
 import { handleStopReason } from './lib/stop-reason.js';
 import { validateStreamedResponse } from './lib/validate.js';
@@ -162,7 +178,7 @@ app.get('/health', (_req, res) => {
 
   res.json({
     status: 'ok',
-    version: '1.4.4',
+    version: '1.4.7',
     deployments,
     cors_allowed_origins: ALLOWED_ORIGINS,
     timestamp: new Date().toISOString(),
@@ -171,8 +187,48 @@ app.get('/health', (_req, res) => {
 
 
 // ----------------------------------------------------------------
-// Admin routes (V1.3 base, V1.3.3 PATCH/DELETE, V1.4.1 /debug/*) — mount under /admin
+// Free-tool proxy (V1.4.7) — standalone, NOT part of /chat flow.
 // ----------------------------------------------------------------
+// Non-streaming Anthropic passthrough for free lead-gen tools (DecisionIQ,
+// StaffTalkIQ) that 504 on Netlify's sync-function wall. Ports the Netlify
+// proxy.js contract: body { model, max_tokens, system, messages } in,
+// Anthropic response JSON out. No deployment dispatch, no Supabase, no KB,
+// no SSE, no prompt cache. CORS allow-list (above) is the only gate; this
+// route never calls getDeploymentByOrigin, so the /chat strict-reject does
+// not apply. Shared-generic endpoint (D1 Session 33 decision, Option 1).
+app.post('/free-tool-proxy', async (req, res) => {
+  const { model, max_tokens, system, messages } = req.body || {};
+
+  // Validate required fields (mirrors Netlify proxy.js guard)
+  if (!model || !max_tokens || !Array.isArray(messages) || messages.length === 0) {
+    return sendError(
+      res,
+      400,
+      makeError({
+        type: 'validation_error',
+        message: 'Missing or invalid required fields: model, max_tokens, messages',
+        suggestion: 'Send JSON { model, max_tokens, messages } (system optional).',
+        recoverable: false,
+      })
+    );
+  }
+
+  const result = await proxyMessage({ model, max_tokens, system, messages });
+
+  if (!result.ok) {
+    // classifyAnthropicError already mapped status → structured shape.
+    // Surface 5xx as 502 (downstream), 4xx as 400; recoverable drives nothing
+    // here (free tools have no agentic retry loop) but is preserved in body.
+    const httpStatus = result.error.recoverable ? 502 : 400;
+    return sendError(res, httpStatus, result.error);
+  }
+
+  // Pass the SDK response through as JSON. Frontends read data.content[0].text.
+  return res.json(result.body);
+});
+
+
+
 app.use('/admin', adminRouter);
 
 
@@ -345,7 +401,7 @@ app.post('/chat', async (req, res) => {
 prebuildAllPrompts();
 
 app.listen(PORT, () => {
-  console.log(`[chatbotiq] V1.4.4 listening on :${PORT}`);
+  console.log(`[chatbotiq] V1.4.7 listening on :${PORT}`);
   for (const { slug, display_name } of listDeployments()) {
     const prompt = SYSTEM_PROMPT_CACHE.get(slug);
     const chars = prompt ? prompt.length : 0;

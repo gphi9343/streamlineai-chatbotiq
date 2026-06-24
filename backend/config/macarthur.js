@@ -62,16 +62,14 @@ export const macarthurConfig = {
 
   // Chat dispatch: which Origin header values map to this deployment.
   //
-  // DEMO PLACEHOLDER — the Netlify demo URL is not provisioned yet. This is a
-  // stand-in. Before the demo serves traffic, Gareth must register the real
-  // serving origin in BOTH lists (they must agree):
-  //   (1) here, in CONFIG.allowed_origins, and
-  //   (2) the Railway ALLOWED_ORIGINS env var (the CORS allow-list).
-  // An origin present in one list but not the other passes CORS and then fails
-  // dispatch with a config_error (or is rejected by CORS outright). See
-  // streamlineai.js / auth.js getDeploymentByOrigin for the full rationale.
+  // Real serving origin — provisioned on Netlify (manual drag-deploy, renamed).
+  // Trap 1: this MUST byte-match the Railway ALLOWED_ORIGINS env var entry
+  // (the CORS allow-list). An origin present in one list but not the other
+  // passes CORS and then fails dispatch with a config_error (or is rejected by
+  // CORS outright). See streamlineai.js / auth.js getDeploymentByOrigin for the
+  // full rationale.
   allowed_origins: [
-    'https://macarthur-chatbot-demo.netlify.app',
+    'https://macarthur-chat.netlify.app',
   ],
 
   // Mandated routing close for INSUFFICIENT DATA responses.
@@ -81,10 +79,13 @@ export const macarthurConfig = {
   //
   // Locked scope: routes to the quote request page ONLY. NO contact capture,
   // NO callback promise, NO email/phone recited (the bot stays mute on contact
-  // details by design — see hard_guardrails). Drafted from the content doc's
-  // INSUFFICIENT DATA examples (#8/#9).
+  // details by design — see hard_guardrails). The quote-request FORM URL is the
+  // routing target itself (not contact capture, not an email) — stated directly
+  // so the customer gets a one-tap link, matching the frontend welcome link.
+  // Drafted from the content doc's INSUFFICIENT DATA examples (#8/#9).
   routing_close:
-    "Best next step is Macarthur's quote request page — pop in your details " +
+    "Best next step is Macarthur's quote request page — " +
+    "https://www.macarthurmarbleandgranite.com/quote-1 — pop in your details " +
     "and any plans you've got, and the team can help you from there.",
 
   // Direct contact email — EMPTY ON PURPOSE. The bot never states an email

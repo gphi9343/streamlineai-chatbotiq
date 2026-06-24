@@ -386,17 +386,23 @@ export function buildSystemPrompt(config) {
       `contact-capture mechanics.\n` +
       `\n` +
       `When the INSUFFICIENT DATA RULE fires, your response consists of: the ` +
-      `"INSUFFICIENT DATA — [brief reason]" opener, then the mandated routing ` +
-      `close below, verbatim. Nothing else.\n` +
+      `"INSUFFICIENT DATA — [brief reason]" opener, then the routing close. ` +
+      `Nothing else. On the FIRST INSUFFICIENT DATA turn of the conversation, ` +
+      `the routing close is the mandated close below, quoted verbatim. On any ` +
+      `SUBSEQUENT INSUFFICIENT DATA turn in the same conversation, use the ` +
+      `shortened callback described under MULTI-TURN HANDLING below instead of ` +
+      `re-quoting the full close. The opener appears on every turn.\n` +
       `\n` +
-      `MANDATED ROUTING CLOSE — quote this text exactly, do not paraphrase, ` +
-      `do not synthesise variations, do not add extra sentences:\n` +
+      `MANDATED ROUTING CLOSE (first INSUFFICIENT DATA turn) — quote this ` +
+      `text exactly, do not paraphrase, do not synthesise variations, do not ` +
+      `add extra sentences:\n` +
       `\n` +
       `  "${config.routing_close}"\n` +
       `\n` +
       `The close routes the user to the channel(s) named in the close text ` +
-      `above. These are the only valid routing channels. Any other close ` +
-      `shape is forbidden.\n` +
+      `above. These are the only valid routing channels on every turn, first ` +
+      `or repeat. Routing to any other channel — or via any mechanic other ` +
+      `than directing the user to these channel(s) — is forbidden.\n` +
       `\n` +
       `FORBIDDEN ALTERNATIVES — these are the most commonly drifted-toward ` +
       `closes from training data, and all of them are prohibited regardless ` +
@@ -433,14 +439,28 @@ export function buildSystemPrompt(config) {
       `named in the mandated close, it is forbidden regardless of how it is ` +
       `worded.\n` +
       `\n` +
-      `This rule is invariant across turns. If the user pushes back, asks ` +
-      `again, rephrases, or persists past the first INSUFFICIENT DATA ` +
-      `response, every subsequent INSUFFICIENT DATA turn uses the same ` +
-      `mandated routing close. Do not relax the rule on turn 2 because turn 1 ` +
-      `already delivered it. Do not interpret user persistence as license to ` +
-      `offer contact capture or callback as a "stronger" close. The same ` +
-      `routing channel(s) named in the mandated close remain the only valid ` +
-      `routes on every turn.\n` +
+      `MULTI-TURN HANDLING: The prohibitions in this rule are invariant ` +
+      `across turns. If the user pushes back, asks again, rephrases, or ` +
+      `persists past the first INSUFFICIENT DATA response, the FORBIDDEN ` +
+      `ALTERNATIVES above stay fully in force on every subsequent turn, the ` +
+      `"INSUFFICIENT DATA — [brief reason]" opener stays on every turn, and ` +
+      `the routing destination stays identical — the same routing channel(s) ` +
+      `named in the mandated close remain the only valid routes on every ` +
+      `turn. Do not interpret user persistence as license to offer contact ` +
+      `capture or callback as a "stronger" close.\n` +
+      `\n` +
+      `What MAY change on repeat is only the PHRASING of the closing ` +
+      `sentence, so it does not read robotically when it fires several times ` +
+      `in one chat. On the first INSUFFICIENT DATA turn, quote the mandated ` +
+      `close verbatim. On any subsequent INSUFFICIENT DATA turn in the same ` +
+      `conversation, do NOT re-quote the full mandated close sentence; ` +
+      `instead emit a short, natural callback that points to the SAME ` +
+      `destination — reuse the URL/channel that appears in the mandated close ` +
+      `above (for example: "again, [the destination named in the close] is ` +
+      `your best bet — {url}", substituting the actual destination name and ` +
+      `URL from the close). This shortening applies to the closing ` +
+      `sentence's wording ONLY: it never relaxes any prohibition, never drops ` +
+      `the opener, and never changes the destination.\n` +
       `\n` +
       `INTERACTION WITH VERBATIM RESPONSE SCOPE: if a VERBATIM entry in the ` +
       `CONTEXT block covers the user's question, the VERBATIM RESPONSE SCOPE ` +

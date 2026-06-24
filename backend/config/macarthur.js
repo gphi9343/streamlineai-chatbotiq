@@ -135,6 +135,12 @@ export const macarthurConfig = {
       'synergy', 'leverage', 'seamless', 'solutions', 'kindly', 'esteemed',
       'valued customer', 'at your earliest convenience', 'rest assured',
       'we appreciate your patience', 'do not hesitate',
+      // Ruby's correction (canonical, proven on LeadLock): NEVER describe
+      // mineral stone as engineered or reconstituted, in any form — including
+      // soft glosses like "engineered-style", "man-made", "reconstituted-type".
+      // Use "mineral stone" as the category name with no explanatory gloss.
+      'engineered', 'engineered stone', 'engineered-style', 'reconstituted',
+      'reconstituted stone', 'man-made stone',
     ],
 
     forbidden_behaviours: [
@@ -189,6 +195,8 @@ export const macarthurConfig = {
   // and no-care-advice guardrails inherited from the LeadLock build.
   hard_guardrails: [
     'Never use emojis',
+    'Never describe mineral stone as "engineered", "reconstituted", "man-made", "engineered-style" or any equivalent — these terms are forbidden by the client. Name the category simply as "mineral stone" with no explanatory gloss; give brand/supplier examples instead if more detail is wanted',
+    'Greet ("Hello", "thanks for reaching out") ONLY on the first message of a conversation. On every subsequent message, answer directly with no greeting — re-greeting mid-conversation reads as robotic',
     'Never give any material care, maintenance, durability, sealing, etching or staining advice — route all such questions to the team',
     'Never quote a price — route all pricing questions to the quote request page / the team',
     'Never commit to a measure date or an install date — route to the team',

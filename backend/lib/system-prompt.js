@@ -1,5 +1,48 @@
 // backend/lib/system-prompt.js
 //
+// V1.4.9 — REFERENCE fabrication guardrail. Adds a second NEVER FABRICATE
+// directive ("NEVER FABRICATE ADJACENT SERVICES, CAPABILITIES, OR
+// CATEGORIES") to the KNOWLEDGE BASE BEHAVIOUR section, sibling to the
+// existing NEVER FABRICATE SPECIFIC FACTUAL VALUES rule.
+//
+// Surfaced by live smoke (Macarthur, 29 Jun 2026): query "can you do island
+// benches" retrieved ONE high-confidence (rank 0.991) on-topic REFERENCE row
+// whose body only said "refer to our quote page". The model paraphrased the
+// row but then fabricated a full service list (splashbacks, vanities,
+// fireplace surrounds, wall panelling, staircases, custom furniture) absent
+// from the matched content, then synthesised a plausible pricing close around
+// it.
+//
+// Not a retrieval failure (correct row, correct topic, high rank) — a
+// grounding failure: a high-confidence REFERENCE match was treated as license
+// to answer from general/training knowledge about what a stone fabricator
+// "probably" offers, rather than restricting synthesis to the row's facts.
+//
+// Root cause: Session 26's three REFERENCE-synthesis anti-patterns (a)/(b)/(c)
+// all live under VERBATIM RESPONSE SCOPE and are scoped to VERBATIM-anchored
+// turns. REFERENCE entries were left looser by design (meant to be
+// paraphrased, not quoted), but "paraphrase the row" and "invent adjacent
+// capabilities not in the row" were never separated — no rule said REFERENCE
+// synthesis must stay bounded by the row's facts.
+//
+// Placement note: the brief framed this as a "(d)" sibling to (a)/(b)/(c), but
+// those live in VERBATIM RESPONSE SCOPE, which only fires on VERBATIM-anchored
+// turns — placing the rule there would NOT cover the island-bench case (a
+// REFERENCE hit, no VERBATIM in CONTEXT). The directive is therefore a CONTENT
+// rule in KNOWLEDGE BASE BEHAVIOUR: fires every turn, REFERENCE or VERBATIM,
+// CONFIG-agnostic. Pattern 5 universal — verified +1389 chars inserted
+// identically into all three deployment prompts (macarthur, streamlineai,
+// upunt; upunt despite shipping no INSUFFICIENT DATA TEMPLATE) with nothing
+// else moved.
+//
+// Anti-hybrid reconciliation: the directive does NOT create a blended
+// answer-then-refuse turn. The V1.3.2 rule ("If you say INSUFFICIENT DATA in a
+// turn, the entire turn is a refusal") owns the answer-vs-refuse MODE
+// decision; the new directive only caps the FACT SET of an answer turn and
+// explicitly defers the mode decision to that rule (see the parenthetical in
+// the directive body). An unsupported sub-scope is handled by non-elaboration,
+// never by a partial INSUFFICIENT DATA opener.
+//
 // V1.4.5.2 — INSUFFICIENT DATA TEMPLATE block added as new top-level section
 // at the end of the cached system prompt. Mandated routing close text comes
 // from CONFIG (config.routing_close) — engine code holds the SHAPE rule and
@@ -140,6 +183,11 @@ export function buildSystemPrompt(config) {
   //   dedicated final section after voice profile (see end of function).
   //   VERBATIM PRECEDENCE (substitution rule) and NEVER FABRICATE (content
   //   rule) remain here — they govern CONTENT, not response SHAPE.
+  // V1.4.9: second NEVER FABRICATE directive added (adjacent services /
+  //   capabilities / categories) — a REFERENCE content-fidelity ceiling.
+  //   Lives here (not in VERBATIM RESPONSE SCOPE) so it fires on REFERENCE-
+  //   anchored turns, which is where the island-bench failure occurred. See
+  //   header for root cause and anti-hybrid reconciliation.
   sections.push(
     `KNOWLEDGE BASE BEHAVIOUR\n` +
     `\n` +
@@ -173,6 +221,27 @@ export function buildSystemPrompt(config) {
     `This applies even if you "know" a plausible value from general knowledge ` +
     `— the value being plausible is not evidence it is correct for this ` +
     `deployment.\n` +
+    `\n` +
+    `NEVER FABRICATE ADJACENT SERVICES, CAPABILITIES, OR CATEGORIES: REFERENCE ` +
+    `entries may be paraphrased, summarised, and reworded in your own voice — ` +
+    `but the SET OF FACTS you convey must not expand beyond what the matched ` +
+    `CONTEXT entries actually contain. Do not add services, capabilities, ` +
+    `product categories, offerings, or other facts that are not stated in the ` +
+    `matched entries, even when they are plausible for this kind of business. ` +
+    `If the user's question implies a broader scope than the matched entries ` +
+    `cover (for example, asks about a specific service or item the entries do ` +
+    `not mention), answer only what the entries actually support and simply do ` +
+    `not address the unsupported part — do not fill the gap from general ` +
+    `knowledge or inference, and do not manufacture a partial refusal about ` +
+    `it. (Whether the turn is an answer at all is governed by the INSUFFICIENT ` +
+    `DATA RULE below: if the matched entries do not meaningfully answer the ` +
+    `question, that whole-turn refusal applies; this directive only governs ` +
+    `the content ceiling of an answer turn, and never blends an answer with an ` +
+    `INSUFFICIENT DATA opener.) A high retrieval confidence or an on-topic ` +
+    `match is not license to answer from general knowledge about what this ` +
+    `kind of business probably offers; it only licenses you to convey what the ` +
+    `matched entry states. This applies on every turn, not only the first time ` +
+    `the topic arises.\n` +
     `\n` +
     `When a CONTEXT block is empty or contains nothing relevant to the user's ` +
     `question, do not invent an answer from general knowledge. Apply the ` +

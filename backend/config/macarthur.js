@@ -77,20 +77,27 @@ export const macarthurConfig = {
   // The bot quotes this verbatim after the "INSUFFICIENT DATA — [brief reason]"
   // opener whenever a turn falls under the INSUFFICIENT DATA RULE.
   //
-  // Locked scope: routes to the quote request page ONLY. NO contact capture,
-  // NO callback promise, NO email/phone recited (the bot stays mute on contact
-  // details by design — see hard_guardrails). The quote-request FORM URL is the
-  // routing target itself (not contact capture, not an email) — stated directly
-  // so the customer gets a one-tap link, matching the frontend welcome link.
-  // Drafted from the content doc's INSUFFICIENT DATA examples (#8/#9).
+  // Locked scope: routes the user to CALL OR EMAIL the Macarthur office to
+  // confirm with the team. NO contact capture, NO callback promise, NO specific
+  // email/phone recited (the bot stays mute on contact details by design — see
+  // hard_guardrails); the customer initiates the call/email — the office does
+  // not call back. Client-authorised reword (Ruby, 29 Jun): replaces the prior
+  // quote-request-page close, which read to non-technical users as the bot
+  // having "failed". example_messages #8/#9 updated to match this destination
+  // so the model can't harvest the old quote-page close from a voice example.
   routing_close:
-    "Best next step is Macarthur's quote request page — " +
-    "https://www.macarthurmarbleandgranite.com/quote-1 — pop in your details " +
-    "and any plans you've got, and the team can help you from there.",
+    "Best next step is to call or email our office, and the team can confirm " +
+    "the details for you from there.",
 
-  // Direct contact email — EMPTY ON PURPOSE. The bot never states an email
-  // (locked scope routes contact requests to the quote request page). The real
-  // address is known but deliberately not populated here. Do not fill this in.
+  // Direct contact email — EMPTY ON PURPOSE. Kept empty so no specific contact
+  // detail is ever recited FROM CONFIG. The routing_close now points the user
+  // to "call or email our office" generically (not the quote page), but recites
+  // no actual address or number — the bot stays mute on specifics here by
+  // design (see hard_guardrails: never state the contact email/phone as fact
+  // until confirmed). Note the bot may still surface a contact detail that
+  // lives in confirmed KB content; this field simply isn't that source. The
+  // real address is known but deliberately not populated in CONFIG. Do not
+  // fill this in.
   contact_email: '',
 
   // Voice profile — drop-in from macarthur-chatbot-config-content.md PART 1
@@ -183,10 +190,10 @@ export const macarthurConfig = {
       // INSUFFICIENT DATA voice — honest, routes, never invents
 
       // 8. Something not in the KB
-      "I don't have a clear answer on that one — best to send your enquiry through the quote request page and the team can help you properly.",
+      "I don't have a clear answer on that one — best to call or email our office and the team can confirm it for you properly.",
 
       // 9. Out of scope
-      "That's outside what I can help with here — I'm just the first point of contact for Macarthur Marble & Granite enquiries. For anything specific, the team's your best bet through the quote request page.",
+      "That's outside what I can help with here — I'm just the first point of contact for Macarthur Marble & Granite enquiries. For anything specific, best to call or email our office and the team can sort you out.",
     ],
   },
 

@@ -20,8 +20,7 @@ What materials and products do you offer?
 
 Macarthur Marble & Granite work across three groups of surfaces:
 
-- MINERAL STONE — the engineered-style surfaces (the current industry term is
-  "mineral stone"). Brands include Caesarstone, Quantum Zero, YDL Stone, AC
+- MINERAL STONE — Brands include Caesarstone, Quantum Zero, YDL Stone, AC
   Stone, Vadara, Stone Ambassador Zenith, Talostone, Unistone and Cosentino
   Xeron.
 - NATURAL STONE — stone like granite, marble and quartzite are examples of this
@@ -72,7 +71,8 @@ For a quote, plans are helpful if you have them. If you don't have plans, that's
 fine — a rough idea of your sizes is enough for the team to put a quote
 together, and if you'd prefer, they can organise a measure for you instead.
 A colour or even just a rough idea of the look you're after lets the team price
-a few options to compare.
+a few options to compare. You can get started on the quote request page:
+https://www.macarthurmarbleandgranite.com/quote-1
 
 
 ---
@@ -90,11 +90,25 @@ request.
 
 ---
 type: REFERENCE
+tags: [reviews, testimonials, social-proof]
+attribution:
+---
+Do you have reviews or testimonials?
+
+Yes — you can read customer reviews on Macarthur Marble & Granite's reviews
+page: https://www.macarthurmarbleandgranite.com/reviews. When you're ready to
+get a quote, you can do that here:
+https://www.macarthurmarbleandgranite.com/quote-1
+
+
+---
+type: REFERENCE
 tags: [how-to, routing]
 attribution:
 ---
 How do I get started / get a quote?
 
-The easiest way to get started is through Macarthur's quote request page. Pop in
-your details and any plans you have, and the team will take it from there. If you
-don't have plans, the team can organise a site visit to measure.
+The easiest way to get started is through Macarthur's quote request page:
+https://www.macarthurmarbleandgranite.com/quote-1 — pop in your details and any
+plans you have, and the team will take it from there. If you don't have plans,
+the team can organise a site visit to measure.

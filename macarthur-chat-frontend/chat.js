@@ -49,7 +49,7 @@
   const EXAMPLE_QUESTIONS = [
     'What materials do you work with?',
     'How soon can you measure and install?',
-    'Do you service my area?',
+    'What areas do you service?',
   ];
 
   function renderWelcome() {
@@ -201,6 +201,39 @@
         ? '[Empty response from server. Check Railway logs.]'
         : '[Stream ended unexpectedly. Check Network tab for SSE events.]';
       assistantDiv.classList.add('msg-error');
+    } else if (!assistantDiv.classList.contains('msg-error')) {
+      // Stream finished cleanly — convert any URLs in the completed message
+      // into real clickable links. Done once, post-stream (can't linkify
+      // mid-stream: a URL arrives across many tokens). Plain-text content is
+      // HTML-escaped first so bot output can never inject markup.
+      linkify(assistantDiv);
+    }
+  }
+
+  // Replace a text node's plain-text URLs with anchor elements.
+  // Escapes first (textContent source is safe, but we build innerHTML), then
+  // links http(s) URLs and bare domain.tld/path forms.
+  function linkify(el) {
+    const raw = el.textContent;
+    const escaped = raw
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+    // Match full URLs (http/https) OR bare domains like macarthurmarbleandgranite.com/quote-1
+    const urlPattern = /\b((?:https?:\/\/)?[a-z0-9.-]+\.[a-z]{2,}(?:\/[^\s]*)?)/gi;
+    const linked = escaped.replace(urlPattern, (match) => {
+      // Skip if it doesn't look like a real domain (avoid matching e.g. "e.g")
+      if (!/\.[a-z]{2,}/i.test(match)) return match;
+      // Strip trailing punctuation that shouldn't be part of the link
+      // (e.g. "...quote-1," or "(quote-1)."), re-appending it after the anchor.
+      let trail = '';
+      const m = match.match(/[.,;:!?)\]]+$/);
+      if (m) { trail = m[0]; match = match.slice(0, -trail.length); }
+      const href = match.startsWith('http') ? match : `https://${match}`;
+      return `<a href="${href}" target="_blank" rel="noopener">${match}</a>${trail}`;
+    });
+    if (linked !== escaped) {
+      el.innerHTML = linked;
     }
   }
 

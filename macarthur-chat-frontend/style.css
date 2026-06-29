@@ -144,6 +144,15 @@ main {
   color: #e8b4b4;
 }
 
+/* Clickable links inside bot messages (post-stream linkify) */
+.msg-assistant a {
+  color: var(--brand-accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  word-break: break-all;
+}
+.msg-assistant a:hover { color: var(--brand-text); }
+
 /* --- Welcome / empty state --- */
 .welcome {
   align-self: stretch;

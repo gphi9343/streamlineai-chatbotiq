@@ -154,6 +154,9 @@ main {
 }
 .msg-assistant a:hover { color: var(--brand-text); }
 
+/* Bullet lists rendered from "- " markdown in bot replies */
+.msg-assistant ul { margin: 4px 0; padding-left: 20px; }
+
 /* --- Welcome / empty state --- */
 .welcome {
   align-self: stretch;

@@ -210,18 +210,20 @@
     }
   }
 
-  // Replace a text node's plain-text URLs with anchor elements.
-  // Escapes first (textContent source is safe, but we build innerHTML), then
-  // links http(s) URLs and bare domain.tld/path forms.
+  // Render a completed assistant message: escape (textContent source is safe,
+  // but we build innerHTML), auto-link URLs, then apply a tiny markdown subset
+  // (**bold** and "- " bullet lists). Run once, post-stream — a URL or **span**
+  // can arrive split across many tokens, so it can't be done mid-stream.
   function linkify(el) {
     const raw = el.textContent;
     const escaped = raw
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;');
-    // Match full URLs (http/https) OR bare domains like macarthurmarbleandgranite.com/quote-1
+    // Auto-link URLs first, while the string is still plain text: the URL path
+    // regex eats non-whitespace greedily, so it must not run once tags exist.
     const urlPattern = /\b((?:https?:\/\/)?[a-z0-9.-]+\.[a-z]{2,}(?:\/[^\s]*)?)/gi;
-    const linked = escaped.replace(urlPattern, (match) => {
+    let html = escaped.replace(urlPattern, (match) => {
       // Skip if it doesn't look like a real domain (avoid matching e.g. "e.g")
       if (!/\.[a-z]{2,}/i.test(match)) return match;
       // Strip trailing punctuation that shouldn't be part of the link
@@ -232,8 +234,27 @@
       const href = match.startsWith('http') ? match : `https://${match}`;
       return `<a href="${href}" target="_blank" rel="noopener">${match}</a>${trail}`;
     });
-    if (linked !== escaped) {
-      el.innerHTML = linked;
+
+    // **bold** -> <strong> (non-greedy, within a single line)
+    html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+
+    // Group runs of "- item" lines into a single <ul>. Emit each list as one
+    // tag-string with no internal newlines, and strip newlines touching the
+    // <ul>/</ul> so white-space: pre-wrap doesn't add blank lines around it.
+    const lines = html.split('\n');
+    const out = [];
+    let items = null;
+    const flush = () => { if (items) { out.push(`<ul>${items.join('')}</ul>`); items = null; } };
+    for (const line of lines) {
+      const m = line.match(/^\s*-\s+(.*)$/);
+      if (m) (items || (items = [])).push(`<li>${m[1]}</li>`);
+      else { flush(); out.push(line); }
+    }
+    flush();
+    html = out.join('\n').replace(/\n*(<ul>)/g, '$1').replace(/(<\/ul>)\n*/g, '$1');
+
+    if (html !== escaped) {
+      el.innerHTML = html;
     }
   }
 

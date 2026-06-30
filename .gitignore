@@ -10,3 +10,4 @@ dist/
 build/
 # Diagnostic endpoint dumps from /admin/debug/system-prompt/
 *-prompt-v*.txt
+*-prompt*.json

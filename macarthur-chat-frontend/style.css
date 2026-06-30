@@ -42,7 +42,7 @@ header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 18px 20px 14px;
+  padding: 22px 20px 28px;
   gap: 16px;
 }
 
@@ -162,7 +162,7 @@ main {
 .welcome {
   align-self: stretch;
   max-width: 100%;
-  padding: 24px 6px 8px;
+  padding: 24px 6px 8px 0;
 }
 .welcome-title {
   font-family: 'Barlow Condensed', 'Barlow', sans-serif;
@@ -257,6 +257,6 @@ main {
 
 /* --- Mobile --- */
 @media (max-width: 480px) {
-  .brand .logo { max-height: 52px; }
+  .brand .logo { max-height: 48px; }
   .msg { max-width: 90%; }
 }

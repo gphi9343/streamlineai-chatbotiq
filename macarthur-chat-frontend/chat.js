@@ -220,10 +220,17 @@
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;');
-    // Auto-link URLs first, while the string is still plain text: the URL path
-    // regex eats non-whitespace greedily, so it must not run once tags exist.
-    const urlPattern = /\b((?:https?:\/\/)?[a-z0-9.-]+\.[a-z]{2,}(?:\/[^\s]*)?)/gi;
-    let html = escaped.replace(urlPattern, (match) => {
+    // Auto-link in one pass: match an email OR a URL/bare-domain. A single scan
+    // consumes each address whole, so ruby@macarthurmarble.sydney is linked as
+    // one mailto and its domain is never re-matched as a URL. The email
+    // alternative is listed first so it wins when a dotted local-part (e.g.
+    // first.last@x.com) lets both alternatives start at the same offset.
+    const linkPattern = /\b[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}\b|\b(?:https?:\/\/)?[a-z0-9.-]+\.[a-z]{2,}(?:\/[^\s]*)?/gi;
+    let html = escaped.replace(linkPattern, (match) => {
+      // Email branch — the @ only the email alternative can produce.
+      if (match.includes('@')) {
+        return `<a href="mailto:${match}">${match}</a>`;
+      }
       // Skip if it doesn't look like a real domain (avoid matching e.g. "e.g")
       if (!/\.[a-z]{2,}/i.test(match)) return match;
       // Strip trailing punctuation that shouldn't be part of the link

@@ -390,10 +390,18 @@ export function buildSystemPrompt(config) {
     `the framing makes a factual claim, that claim must trace to a specific ` +
     `entry currently in the CONTEXT block — REFERENCE or VERBATIM.\n` +
     `\n` +
-    `  (2) A content-free transition phrase that names the source or restates ` +
-    `the question topic, carrying no factual content of its own. Examples: ` +
-    `"Here's what the source says about that:"; "On pricing —"; "Gareth's ` +
-    `take on this:".\n` +
+    `  (2) A content-free transition phrase that restates the question topic, ` +
+    `carrying no factual content of its own and reading as the business ` +
+    `speaking in its own voice. Examples: "Quick context on that:"; ` +
+    `"On pricing —"; or simply lead straight into the quote with no framing ` +
+    `phrase at all.\n` +
+    `\n` +
+    `Never introduce a VERBATIM quote with a framing phrase that attributes ` +
+    `it to "the source", a third party, or an individual by name (for ` +
+    `example, avoid "Here's what the source says about that", "according to ` +
+    `our records", or "Gareth's take on this"). The quoted material is the ` +
+    `business speaking directly, not reported speech — frame it that way or ` +
+    `not at all.\n` +
     `\n` +
     `Any framing that does not fit one of these two shapes is forbidden. ` +
     `Specifically, do not extend a VERBATIM quote with any of the following:\n` +

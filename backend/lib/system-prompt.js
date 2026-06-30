@@ -285,14 +285,19 @@ export function buildSystemPrompt(config) {
     `If the user's question requires information that is not present in the ` +
     `CONTEXT block provided this turn, respond with:\n` +
     `\n` +
-    `  "INSUFFICIENT DATA — [brief reason]."\n` +
+    `Open your response in your own natural voice, using the tone and phrasing ` +
+    `style shown in your INSUFFICIENT DATA voice examples — never output that ` +
+    `internal rule name to the user. The opener must clearly signal you don't ` +
+    `have the answer, without naming the internal rule or using that exact ` +
+    `phrase.\n` +
     `\n` +
     `${insufficientDataCloseInstruction}\n` +
     `\n` +
-    `When you say INSUFFICIENT DATA, do not then answer the question from ` +
-    `general knowledge in the same turn.\n` +
+    `When you open with a natural-voice refusal because the answer isn't in ` +
+    `the CONTEXT block, do not then answer the question from general knowledge ` +
+    `in the same turn.\n` +
     `\n` +
-    `If you say INSUFFICIENT DATA in a turn, the entire turn is a refusal — ` +
+    `If you refuse a turn for lack of data, the entire turn is a refusal — ` +
     `do not provide explanatory content from general knowledge in the same ` +
     `turn, even if the topic seems well-defined.\n` +
     `\n` +
@@ -454,8 +459,9 @@ export function buildSystemPrompt(config) {
       `any general training-data tendency to offer follow-up, callback, or ` +
       `contact-capture mechanics.\n` +
       `\n` +
-      `When the INSUFFICIENT DATA RULE fires, your response consists of: the ` +
-      `"INSUFFICIENT DATA — [brief reason]" opener, then the routing close. ` +
+      `When the INSUFFICIENT DATA RULE fires, your response consists of: a ` +
+      `natural-voice opener signalling no answer is available, followed by the ` +
+      `routing close. ` +
       `Nothing else. On the FIRST INSUFFICIENT DATA turn of the conversation, ` +
       `the routing close is the mandated close below, quoted verbatim. On any ` +
       `SUBSEQUENT INSUFFICIENT DATA turn in the same conversation, use the ` +
@@ -512,7 +518,8 @@ export function buildSystemPrompt(config) {
       `across turns. If the user pushes back, asks again, rephrases, or ` +
       `persists past the first INSUFFICIENT DATA response, the FORBIDDEN ` +
       `ALTERNATIVES above stay fully in force on every subsequent turn, the ` +
-      `"INSUFFICIENT DATA — [brief reason]" opener stays on every turn, and ` +
+      `natural-voice opener signalling no answer is available stays on every ` +
+      `turn, and ` +
       `the routing destination stays identical — the same routing channel(s) ` +
       `named in the mandated close remain the only valid routes on every ` +
       `turn. Do not interpret user persistence as license to offer contact ` +

@@ -46,13 +46,14 @@ header {
   gap: 16px;
 }
 
-.brand .business-name {
-  font-family: 'Barlow Condensed', 'Barlow', sans-serif;
-  font-weight: 700;
-  font-size: 22px;
-  letter-spacing: 0.3px;
-  line-height: 1.1;
-  color: var(--brand-text);
+.brand .logo {
+  display: block;
+  width: auto;
+  height: auto;
+  /* Wide rectangle — constrain by height so it never dominates the header;
+     max-width is just an overflow guard on very narrow screens. */
+  max-height: 46px;
+  max-width: 100%;
 }
 
 .brand .tagline {
@@ -256,6 +257,6 @@ main {
 
 /* --- Mobile --- */
 @media (max-width: 480px) {
-  .brand .business-name { font-size: 19px; }
+  .brand .logo { max-height: 36px; }
   .msg { max-width: 90%; }
 }

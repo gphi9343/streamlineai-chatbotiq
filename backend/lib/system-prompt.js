@@ -1,5 +1,27 @@
 // backend/lib/system-prompt.js
 //
+// V1.5.0 — VERBATIM PRECEDENCE applicability qualifier. Adds a paragraph to
+// the KNOWLEDGE BASE BEHAVIOUR section, immediately after VERBATIM PRECEDENCE,
+// narrowing the coverage test: a VERBATIM entry anchors the turn ONLY when
+// quoting it would actually answer the specific question asked — topical or
+// keyword adjacency is not coverage. When an adjacent VERBATIM shares
+// vocabulary with the question (e.g. an install booking-process quote vs a
+// "how soon can you install" turnaround-figure query) but another CONTEXT
+// entry directly answers, the model answers from the entry that answers and
+// does not quote the adjacent VERBATIM. Does NOT weaken precedence where a
+// VERBATIM genuinely covers the question.
+//
+// Surfaced by live smoke (Macarthur): "whats the soonest you can install"
+// retrieved the turnaround REFERENCE row at rank #1 (0.478) but the
+// install-first booking-process VERBATIM at rank #2 (0.240) in-context.
+// VERBATIM PRECEDENCE is categorical (not rank-based), so the model anchored
+// the turn on the booking-process quote and blended a long answer instead of
+// giving the direct turnaround figure. Retrieval scoping could not separate
+// the two intents — they share the install/soon vocabulary — so the fix is a
+// prompt-layer disambiguation, not a KB change. Pattern 5 universal: inserted
+// identically into all three deployment prompts (macarthur, streamlineai,
+// upunt) with nothing else moved.
+//
 // V1.4.9 — REFERENCE fabrication guardrail. Adds a second NEVER FABRICATE
 // directive ("NEVER FABRICATE ADJACENT SERVICES, CAPABILITIES, OR
 // CATEGORIES") to the KNOWLEDGE BASE BEHAVIOUR section, sibling to the
@@ -212,6 +234,27 @@ export function buildSystemPrompt(config) {
     `between quotes; the VERBATIM entry IS what you quote. Do not substitute ` +
     `a stylistically similar example_message for a VERBATIM entry that covers ` +
     `the user's question.\n` +
+    `\n` +
+    `VERBATIM PRECEDENCE APPLIES ONLY WHEN THE ENTRY ANSWERS THE QUESTION: ` +
+    `A VERBATIM entry "covers the user's question" only when quoting it would ` +
+    `actually answer what the user specifically asked. Sharing a topic, ` +
+    `subject, or keywords with the question is not coverage. When a VERBATIM ` +
+    `entry is merely adjacent — it describes a related process, or repeats ` +
+    `words from the question — but does not answer the specific thing asked, ` +
+    `and another entry in the CONTEXT block directly answers it, answer from ` +
+    `the entry that directly answers and do NOT anchor the response on the ` +
+    `adjacent VERBATIM entry (do not quote it). In particular, a direct ` +
+    `request for a specific figure or fact — a timeframe ("how soon", "how ` +
+    `fast", "how long", "when"), a price, a quantity, or a named detail — is ` +
+    `covered by the entry that actually states that figure or fact. A ` +
+    `VERBATIM entry that discusses a related process but does not state the ` +
+    `requested value does not cover such a question and must not be quoted as ` +
+    `the response anchor; answer from the entry that states the value, in ` +
+    `your own voice, bounded by the NEVER FABRICATE rules below. This ` +
+    `qualifier narrows only the coverage test — it does not weaken VERBATIM ` +
+    `precedence where it applies: when a VERBATIM entry does answer the ` +
+    `specific question asked, it takes precedence and is quoted exactly, as ` +
+    `stated above.\n` +
     `\n` +
     `NEVER FABRICATE SPECIFIC FACTUAL VALUES: Do not invent prices, dates, ` +
     `quantities, percentages, names, contact details, identifiers, product ` +

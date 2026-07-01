@@ -1,5 +1,36 @@
 // backend/lib/system-prompt.js
 //
+// V1.5.0 — VERBATIM coverage most-direct-answer test. Two coordinated pieces:
+// (1) a coverage-test paragraph in KNOWLEDGE BASE BEHAVIOUR, immediately after
+// VERBATIM PRECEDENCE, defining that a VERBATIM entry "covers" the question
+// only when it is the MOST DIRECT AND COMPLETE answer to what was specifically
+// asked (topical/keyword overlap is not coverage); and (2) a forceful
+// APPLICABILITY PRECONDITION at the top of the end-anchored VERBATIM RESPONSE
+// SCOPE section, run before quoting, that re-checks the same test and, for
+// "how soon / how fast / how long / when" questions, routes a concrete
+// timeframe answer to the entry that states it rather than to a VERBATIM that
+// only describes the surrounding process/booking. Does NOT weaken precedence
+// where a VERBATIM genuinely is the most direct answer.
+//
+// Surfaced by live smoke (Macarthur): "whats the soonest you can install"
+// retrieved the turnaround REFERENCE row at rank #1 (0.478) but the
+// install-first booking-process VERBATIM at rank #2 (0.240) in-context.
+// VERBATIM PRECEDENCE is categorical (not rank-based), so the model anchored
+// the turn on the booking-process quote and blended a long answer instead of
+// giving the direct turnaround figure. Retrieval could not separate the two
+// intents — they share install/soon vocabulary — so the fix is prompt-layer.
+//
+// Iteration note: the first attempt was a single paragraph in KNOWLEDGE BASE
+// BEHAVIOUR keyed on "a request for a specific figure/value." It rendered
+// correctly (confirmed via char delta + debug endpoint) but smoke 1 still
+// failed: "soonest to install" carries no explicit number, so the model read
+// the booking VERBATIM as a valid timing answer and the value-keyed carve-out
+// never fired; the calm mid-prompt (~7%) paragraph also lost attention to the
+// end-anchored RESPONSE SCOPE mandate. This revision re-targets the test on
+// "most direct answer / timeframe-vs-process" and relocates the decisive check
+// to the high-attention end section. Pattern 5 universal: identical insert
+// across all three deployment prompts (macarthur, streamlineai, upunt).
+//
 // V1.4.9 — REFERENCE fabrication guardrail. Adds a second NEVER FABRICATE
 // directive ("NEVER FABRICATE ADJACENT SERVICES, CAPABILITIES, OR
 // CATEGORIES") to the KNOWLEDGE BASE BEHAVIOUR section, sibling to the
@@ -213,6 +244,24 @@ export function buildSystemPrompt(config) {
     `a stylistically similar example_message for a VERBATIM entry that covers ` +
     `the user's question.\n` +
     `\n` +
+    `VERBATIM COVERAGE IS A MOST-DIRECT-ANSWER TEST: A VERBATIM entry ` +
+    `"covers the user's question" — for the precedence rule just above and ` +
+    `for the VERBATIM RESPONSE SCOPE rule at the end of this prompt — only ` +
+    `when it is the most direct and complete answer to the specific question ` +
+    `actually asked. Sharing a topic, or repeating words from the question, ` +
+    `is not coverage. If another entry in the CONTEXT block answers the ` +
+    `specific question more directly or completely than a VERBATIM entry ` +
+    `does, the VERBATIM entry does not cover the question: do not select it ` +
+    `under precedence, and do not quote it as the response anchor — answer ` +
+    `from the entry that most directly answers, in your own voice, bounded ` +
+    `by the NEVER FABRICATE rules below. This bites hardest on questions ` +
+    `about how quickly, how soon, or in what timeframe something can happen: ` +
+    `if one entry states a concrete timeframe or duration and a VERBATIM ` +
+    `entry instead describes the surrounding process or scheduling, the entry ` +
+    `stating the timeframe is the more direct answer. VERBATIM RESPONSE SCOPE ` +
+    `at the end of this prompt gives the full test to run before quoting — ` +
+    `apply it there.\n` +
+    `\n` +
     `NEVER FABRICATE SPECIFIC FACTUAL VALUES: Do not invent prices, dates, ` +
     `quantities, percentages, names, contact details, identifiers, product ` +
     `specifications, or any other specific factual value that is not present ` +
@@ -380,6 +429,26 @@ export function buildSystemPrompt(config) {
     `last rule in this prompt deliberately — it takes precedence over the ` +
     `voice profile's stylistic instructions whenever the two would produce ` +
     `different response shapes.\n` +
+    `\n` +
+    `APPLICABILITY PRECONDITION — run this BEFORE quoting. This rule governs ` +
+    `a turn only when a VERBATIM entry genuinely covers the user's question, ` +
+    `meaning it is the most direct and complete answer to the specific thing ` +
+    `asked. Before committing to the quote-only shape below, check whether ` +
+    `another entry in the CONTEXT block answers the user's specific question ` +
+    `more directly or completely. If one does, the VERBATIM entry does NOT ` +
+    `cover this question: this rule does not apply, you do not quote the ` +
+    `VERBATIM entry, and you answer from the entry that most directly ` +
+    `answers, in your own voice, bounded by the NEVER FABRICATE rules earlier ` +
+    `in this prompt. Topical overlap or shared keywords are not coverage. ` +
+    `This is decisive for "how soon", "how fast", "how long", or "when" ` +
+    `questions: if one entry states a concrete timeframe or duration and a ` +
+    `VERBATIM entry instead describes the surrounding process, booking, or ` +
+    `scheduling steps, the timeframe entry is the more direct answer — lead ` +
+    `with it and do not quote the process VERBATIM. Quote the process ` +
+    `VERBATIM only when the user is actually asking about the process, ` +
+    `booking, or scheduling itself. When the VERBATIM entry IS the most ` +
+    `direct answer, it covers the question and the quote-only shape below ` +
+    `applies in full.\n` +
     `\n` +
     `When a VERBATIM entry covers the user's question and you are quoting ` +
     `it, your response consists of: the verbatim quote (with attribution), ` +

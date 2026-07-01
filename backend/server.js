@@ -178,7 +178,7 @@ app.get('/health', (_req, res) => {
 
   res.json({
     status: 'ok',
-    version: '1.4.8',
+    version: '1.5.0',
     deployments,
     cors_allowed_origins: ALLOWED_ORIGINS,
     timestamp: new Date().toISOString(),
@@ -401,7 +401,7 @@ app.post('/chat', async (req, res) => {
 prebuildAllPrompts();
 
 app.listen(PORT, () => {
-  console.log(`[chatbotiq] V1.4.8 listening on :${PORT}`);
+  console.log(`[chatbotiq] V1.5.0 listening on :${PORT}`);
   for (const { slug, display_name } of listDeployments()) {
     const prompt = SYSTEM_PROMPT_CACHE.get(slug);
     const chars = prompt ? prompt.length : 0;

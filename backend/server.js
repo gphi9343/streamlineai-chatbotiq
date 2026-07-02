@@ -355,6 +355,39 @@ app.post('/chat', async (req, res) => {
     console.warn('[validate] post-stream validation failed:', validation.message);
   }
 
+  // --- Retrieval observability (Session 36) — structured per-turn diagnostic.
+  // Logging only: no behavioural change, no schema change, no added DB write.
+  // It ties the query to what retrieval actually surfaced this turn (ok flag,
+  // hit count, entry ids, ranks, content_types) alongside the model's response.
+  // Those are the exact facts that were missing when the Macarthur "3-4 weeks"
+  // turnaround fabrication could not be isolated post-hoc: assistant rows
+  // persist the response text but never recorded what CONTEXT the model
+  // received, so a later retrieval re-run only shows CURRENT KB state, not what
+  // was in-context at the moment of the failing turn. With this line, the next
+  // occurrence is separable from logs alone — "retrieval empty/failed →
+  // fabricated" vs "correct entry in-context → model ignored it". One JSON
+  // line per turn, greppable by [chat-diag]. Note: Railway log retention is a
+  // rolling window; if durable/queryable capture is wanted later, persist the
+  // same fields onto the assistant row behind a one-time column migration.
+  console.log(
+    '[chat-diag] ' +
+      JSON.stringify({
+        session_id,
+        deployment: CONFIG.client_slug,
+        query: message,
+        retrieval_ok: kbResult.ok,
+        retrieval_error: kbResult.ok ? null : kbResult.error.message,
+        kb_hits: hits.length,
+        kb_entries: hits.map(h => ({
+          id: h.id,
+          rank: typeof h.rank === 'number' ? Number(h.rank.toFixed(4)) : null,
+          content_type: h.content_type,
+        })),
+        stop_reason: result.stop_reason,
+        response_preview: (result.text || '').slice(0, 240),
+      })
+  );
+
   // --- Persist assistant message + diagnostics
   const usage = result.usage || {};
   const assistantSave = await saveAssistantMessage(session_id, result.text, {

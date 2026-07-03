@@ -45,13 +45,16 @@ export const macarthurConfig = {
     'service',
   client_slug: 'macarthur',
 
-  // Brand — taken verbatim from the LeadLock Macarthur build's index.html
-  // :root block (NOT StreamlineAI's gold). Stone-rose accent (#CBA58F) is the
-  // signature Macarthur colour on a near-black ground.
+  // Brand — corrected to the approved live chat widget theme
+  // (macarthur-chat-frontend/style.css → macarthur-chat.netlify.app): a light
+  // grey ground with dark charcoal text and the stone-rose accent. Supersedes
+  // the earlier values copied verbatim from an old LeadLock build (near-black
+  // bg / warm-white text), which never matched the live widget. Not rendered
+  // into the system prompt — purely the brand-of-record.
   brand: {
-    primary_colour: '#0A0908', // --brand-bg, near-black
-    accent_colour: '#CBA58F', // --brand-accent, stone-rose
-    text_colour: '#F4EFE9', // --brand-text, warm white
+    primary_colour: '#f5f5f5', // --brand-bg, light grey ground
+    accent_colour: '#CBA58F', // --brand-accent, stone-rose (unchanged)
+    text_colour: '#2c2c2c', // --brand-text, dark charcoal
     font: "'Barlow', sans-serif", // body (LeadLock headings/CTAs use Barlow Condensed)
   },
 

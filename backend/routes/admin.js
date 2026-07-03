@@ -392,8 +392,12 @@ adminRouter.get(
 // Pure read against existing tables (uses the V1.6 sessions.deployment_slug
 // column); no scheduling, no email.
 //
-// Auth: slugFrom:'param' — the bearer token must be the one issued for :slug,
-// not merely any valid admin token. Wrong token -> 401, unknown slug -> 404.
+// Auth: slugFrom:'param' with the client tier enabled. Accepts EITHER the
+// deployment's admin token (header only) OR its client token
+// (config.client_token_env_var; header or the ?token= fallback used by the
+// bookmarkable client link). Wrong token -> 401, unknown slug -> 404. The
+// client tier is scoped to THIS route only (allowClientToken) — a leaked
+// client link can never reach KB or debug endpoints.
 //
 // Date range (both required): half-open interval [start, end) on the session
 // created_at. Convenience for direct/date-only calls: a bare YYYY-MM-DD start
@@ -426,7 +430,7 @@ function normaliseEndBoundExclusive(s) {
 
 adminRouter.get(
   '/conversations/:slug',
-  requireAdminAuth({ slugFrom: 'param' }),
+  requireAdminAuth({ slugFrom: 'param', allowClientToken: true, allowQueryToken: true }),
   async (req, res) => {
     const { slug } = req.params;
     const { start, end } = req.query;

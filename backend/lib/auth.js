@@ -116,33 +116,37 @@ export function listDeployments() {
  * skip slug resolution. Set requireDeployment: false in the route.
  */
 export function requireAdminAuth(options = {}) {
-  const { requireDeployment = true, slugFrom = null } = options;
+  const {
+    requireDeployment = true,
+    slugFrom = null,
+    allowClientToken = false,
+    allowQueryToken = false,
+  } = options;
 
   return (req, res, next) => {
-    // --- Extract bearer token
+    // --- Extract token. Authorization: Bearer is the rule everywhere. The
+    // conversations route additionally opts into a ?token= query fallback
+    // (allowQueryToken) for the bookmarkable client link — no other route.
     const authHeader = req.headers.authorization || '';
     const match = authHeader.match(/^Bearer\s+(.+)$/i);
-    if (!match) {
-      return sendError(
-        res,
-        401,
-        makeError({
-          type: 'auth_failure',
-          message: 'Missing or malformed Authorization header',
-          suggestion: 'Send Authorization: Bearer <token>.',
-          recoverable: false,
-        })
-      );
+    let token = match ? match[1].trim() : '';
+    let tokenSource = token ? 'header' : null;
+
+    if (!token && allowQueryToken && typeof req.query.token === 'string') {
+      token = req.query.token.trim();
+      if (token) tokenSource = 'query';
     }
-    const token = match[1].trim();
+
     if (!token) {
       return sendError(
         res,
         401,
         makeError({
           type: 'auth_failure',
-          message: 'Empty bearer token',
-          suggestion: 'Send a non-empty token.',
+          message: 'Missing or malformed credentials',
+          suggestion: allowQueryToken
+            ? 'Send Authorization: Bearer <token> or ?token=<token>.'
+            : 'Send Authorization: Bearer <token>.',
           recoverable: false,
         })
       );
@@ -210,21 +214,37 @@ export function requireAdminAuth(options = {}) {
         );
       }
 
-      if (token !== expectedToken) {
-        return sendError(
-          res,
-          401,
-          makeError({
-            type: 'auth_failure',
-            message: 'Invalid token for this deployment',
-            suggestion: 'Use the admin token issued for this deployment slug.',
-            recoverable: false,
-          })
-        );
+      // Admin token authorizes via HEADER ONLY — never via ?token= (keeps the
+      // powerful admin token out of URLs, browser history, and access logs).
+      if (tokenSource === 'header' && token === expectedToken) {
+        req.deploymentConfig = config;
+        req.authTier = 'admin';
+        return next();
       }
 
-      req.deploymentConfig = config;
-      return next();
+      // Client token tier — opt-in per route via allowClientToken. Narrower,
+      // separate env var (config.client_token_env_var); may arrive via header
+      // OR the ?token= fallback. Only routes that pass allowClientToken accept
+      // it, so a leaked client link can never reach KB/debug routes.
+      if (allowClientToken && config.client_token_env_var) {
+        const expectedClientToken = process.env[config.client_token_env_var];
+        if (expectedClientToken && token === expectedClientToken) {
+          req.deploymentConfig = config;
+          req.authTier = 'client';
+          return next();
+        }
+      }
+
+      return sendError(
+        res,
+        401,
+        makeError({
+          type: 'auth_failure',
+          message: 'Invalid token for this deployment',
+          suggestion: 'Use the admin token issued for this deployment slug.',
+          recoverable: false,
+        })
+      );
     }
 
     // --- Scoped enumeration (V1.6). Still accept any valid admin token, but

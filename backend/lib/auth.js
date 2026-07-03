@@ -116,7 +116,7 @@ export function listDeployments() {
  * skip slug resolution. Set requireDeployment: false in the route.
  */
 export function requireAdminAuth(options = {}) {
-  const { requireDeployment = true } = options;
+  const { requireDeployment = true, slugFrom = null } = options;
 
   return (req, res, next) => {
     // --- Extract bearer token
@@ -148,20 +148,99 @@ export function requireAdminAuth(options = {}) {
       );
     }
 
-    // --- If route doesn't need deployment slug, skip resolution.
-    // Used by /admin/deployments listing route.
+    // --- V1.6 param-scoped mode. Slug comes from the route path
+    // (req.params.slug) and the bearer token must be the token issued for
+    // THAT specific deployment — not merely any valid admin token. Used by the
+    // slug-scoped debug routes and GET /admin/conversations/:slug. Checked
+    // before the requireDeployment logic so it takes precedence.
+    if (slugFrom === 'param') {
+      const slug = req.params && req.params.slug;
+      if (!slug || typeof slug !== 'string' || !slug.trim()) {
+        return sendError(
+          res,
+          400,
+          makeError({
+            type: 'validation_error',
+            message: 'Missing slug parameter',
+            suggestion: 'This route requires a :slug path segment.',
+            recoverable: false,
+          })
+        );
+      }
+
+      const config = getDeploymentConfig(slug);
+      if (!config) {
+        return sendError(
+          res,
+          404,
+          makeError({
+            type: 'validation_error',
+            message: `Unknown deployment slug: ${slug}`,
+            suggestion: `Valid slugs: ${Object.keys(DEPLOYMENT_REGISTRY).join(', ')}`,
+            recoverable: false,
+          })
+        );
+      }
+
+      const envVarName = config.admin_token_env_var;
+      if (!envVarName) {
+        return sendError(
+          res,
+          500,
+          makeError({
+            type: 'config_error',
+            message: `Deployment ${slug} has no admin_token_env_var configured`,
+            suggestion: 'Add admin_token_env_var to the deployment CONFIG.',
+            recoverable: false,
+          })
+        );
+      }
+
+      const expectedToken = process.env[envVarName];
+      if (!expectedToken) {
+        return sendError(
+          res,
+          500,
+          makeError({
+            type: 'config_error',
+            message: `Env var ${envVarName} not set`,
+            suggestion: `Set ${envVarName} in Railway env vars.`,
+            recoverable: false,
+          })
+        );
+      }
+
+      if (token !== expectedToken) {
+        return sendError(
+          res,
+          401,
+          makeError({
+            type: 'auth_failure',
+            message: 'Invalid token for this deployment',
+            suggestion: 'Use the admin token issued for this deployment slug.',
+            recoverable: false,
+          })
+        );
+      }
+
+      req.deploymentConfig = config;
+      return next();
+    }
+
+    // --- Scoped enumeration (V1.6). Still accept any valid admin token, but
+    // resolve WHICH deployment(s) this token authorizes and attach them so the
+    // handler can filter its listing to just those. A token matches exactly one
+    // deployment (env var values are unique per deployment). Used by the
+    // /admin/deployments listing route.
     if (!requireDeployment) {
-      // For deployment-listing routes, accept any token that matches ANY
-      // registered deployment. This means: if you have a valid token for
-      // any deployment, you can list deployments. Acceptable trade-off
-      // for V1.4 since the only operator is Gareth. V1.6 tightens this
-      // to deployment-scoped enumeration once paying-client deployments
-      // register.
-      const matched = Object.values(DEPLOYMENT_REGISTRY).some(cfg => {
-        const expected = process.env[cfg.admin_token_env_var];
-        return expected && expected === token;
-      });
-      if (!matched) {
+      const authorizedSlugs = Object.entries(DEPLOYMENT_REGISTRY)
+        .filter(([, cfg]) => {
+          const expected = process.env[cfg.admin_token_env_var];
+          return expected && expected === token;
+        })
+        .map(([slug]) => slug);
+
+      if (authorizedSlugs.length === 0) {
         return sendError(
           res,
           401,
@@ -173,6 +252,8 @@ export function requireAdminAuth(options = {}) {
           })
         );
       }
+
+      req.authorizedSlugs = authorizedSlugs;
       return next();
     }
 

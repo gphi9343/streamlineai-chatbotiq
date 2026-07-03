@@ -385,6 +385,137 @@ adminRouter.get(
 );
 
 // ----------------------------------------------------------------
+// GET /admin/conversations/:slug?start=<date>&end=<date>   (V1.6)
+//
+// Conversation Digest (pull-mode). Returns conversation threads (session +
+// chronologically-ordered messages) for a deployment within a date range.
+// Pure read against existing tables (uses the V1.6 sessions.deployment_slug
+// column); no scheduling, no email.
+//
+// Auth: slugFrom:'param' — the bearer token must be the one issued for :slug,
+// not merely any valid admin token. Wrong token -> 401, unknown slug -> 404.
+//
+// Date range (both required): half-open interval [start, end) on the session
+// created_at. Convenience for direct/date-only calls: a bare YYYY-MM-DD start
+// is UTC midnight; a bare YYYY-MM-DD end is INCLUSIVE of that whole day
+// (advanced to next-day UTC midnight). Full ISO timestamps are used verbatim.
+// Bounds are UTC; the admin frontend presets send explicit ISO values.
+// ----------------------------------------------------------------
+const MAX_CONVERSATIONS = 500;
+
+function normaliseStartBound(s) {
+  if (typeof s !== 'string' || !s.trim()) return null;
+  const v = s.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return `${v}T00:00:00.000Z`;
+  const d = new Date(v);
+  return isNaN(d.getTime()) ? null : d.toISOString();
+}
+
+function normaliseEndBoundExclusive(s) {
+  if (typeof s !== 'string' || !s.trim()) return null;
+  const v = s.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(v)) {
+    const d = new Date(`${v}T00:00:00.000Z`);
+    if (isNaN(d.getTime())) return null;
+    d.setUTCDate(d.getUTCDate() + 1); // inclusive of the whole end day
+    return d.toISOString();
+  }
+  const d = new Date(v);
+  return isNaN(d.getTime()) ? null : d.toISOString();
+}
+
+adminRouter.get(
+  '/conversations/:slug',
+  requireAdminAuth({ slugFrom: 'param' }),
+  async (req, res) => {
+    const { slug } = req.params;
+    const { start, end } = req.query;
+
+    const startBound = normaliseStartBound(start);
+    const endBound = normaliseEndBoundExclusive(end);
+
+    if (!startBound || !endBound) {
+      return sendError(
+        res,
+        400,
+        makeError({
+          type: 'validation_error',
+          message: 'Missing or invalid start/end date',
+          suggestion:
+            'Pass start and end as YYYY-MM-DD or ISO 8601 timestamps, ' +
+            'e.g. ?start=2026-06-01&end=2026-06-30',
+          recoverable: false,
+        })
+      );
+    }
+
+    if (new Date(startBound).getTime() >= new Date(endBound).getTime()) {
+      return sendError(
+        res,
+        400,
+        makeError({
+          type: 'validation_error',
+          message: 'start must be before end',
+          suggestion: 'Provide a start date earlier than the end date.',
+          recoverable: false,
+        })
+      );
+    }
+
+    // Embed messages via the messages.session_id -> sessions.id FK. Sessions
+    // newest-first; messages sorted chronologically in JS below (version-
+    // agnostic — avoids embedded-order API churn between supabase-js versions).
+    const { data, error } = await supabase
+      .from('sessions')
+      .select('id, created_at, last_active_at, messages ( role, content, created_at )')
+      .eq('deployment_slug', slug)
+      .gte('created_at', startBound)
+      .lt('created_at', endBound)
+      .order('created_at', { ascending: false })
+      .limit(MAX_CONVERSATIONS);
+
+    if (error) {
+      console.error('[admin/conversations] query failed:', error);
+      return sendError(
+        res,
+        500,
+        makeError({
+          type: 'downstream_unavailable',
+          message: `Conversation query failed: ${error.message}`,
+          suggestion: 'Retry; check Supabase status if persistent.',
+          recoverable: true,
+        })
+      );
+    }
+
+    const rows = data || [];
+    const conversations = rows.map(s => {
+      const messages = (s.messages || [])
+        .slice()
+        .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+      return {
+        session_id: s.id,
+        created_at: s.created_at,
+        last_active_at: s.last_active_at,
+        message_count: messages.length,
+        messages,
+      };
+    });
+
+    return res.json({
+      status: 'ok',
+      slug,
+      deployment_name: req.deploymentConfig.deployment_name,
+      start: startBound,
+      end: endBound,
+      conversation_count: conversations.length,
+      truncated: rows.length === MAX_CONVERSATIONS,
+      conversations,
+    });
+  }
+);
+
+// ----------------------------------------------------------------
 // POST /admin/kb
 // Create a KB entry.
 //

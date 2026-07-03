@@ -301,7 +301,11 @@ app.post('/chat', async (req, res) => {
   };
 
   // --- Ensure session row exists
-  const sessionResult = await ensureSession(session_id, CONFIG.deployment_name);
+  const sessionResult = await ensureSession(
+    session_id,
+    CONFIG.deployment_name,
+    CONFIG.client_slug
+  );
   if (!sessionResult.ok) {
     send('error', serialiseError(sessionResult.error));
     return res.end();

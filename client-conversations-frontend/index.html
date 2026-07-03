@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Conversations</title>
+  <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <img id="brand-logo" class="logo" alt="" hidden />
+      <h1 id="brand-name">Conversations</h1>
+    </div>
+    <span class="subtitle">Conversation log</span>
+  </header>
+
+  <main>
+    <section class="controls">
+      <div class="date-range">
+        <div class="date-field">
+          <label for="conv-start">Start</label>
+          <input type="date" id="conv-start" />
+        </div>
+        <div class="date-field">
+          <label for="conv-end">End</label>
+          <input type="date" id="conv-end" />
+        </div>
+      </div>
+      <div class="button-row">
+        <button id="conv-load" type="button" class="primary">Load</button>
+        <button id="conv-preset-7" type="button" class="secondary">Last 7 days</button>
+        <button id="conv-preset-30" type="button" class="secondary">Last 30 days</button>
+      </div>
+    </section>
+
+    <div id="conversations-status" class="status"></div>
+    <div id="conversations-list">
+      <p class="muted">Loading…</p>
+    </div>
+  </main>
+
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

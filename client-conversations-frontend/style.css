@@ -1,0 +1,136 @@
+/* client-conversations-frontend/style.css
+ * Self-contained styles for the client-facing Conversations viewer.
+ *
+ * LIGHT theme, matched to Macarthur's approved live chat widget
+ * (macarthur-chat-frontend/style.css): light-grey ground, dark charcoal text,
+ * stone-rose accent, warm-cream / light-grey message bubbles, under a black
+ * header/logo block. Values pulled from the widget, NOT from macarthur.js's
+ * brand block (stale — see config.js).
+ *
+ * --bg/--accent/--text are overridden per deployment at load from config.js
+ * by app.js; the rest of the palette is themed here. */
+
+:root {
+  --bg: #f5f5f5;          /* light grey ground */
+  --header-bg: #111111;   /* black logo/header block */
+  --on-header: #f3ead9;   /* cream text on the black header */
+  --card-bg: #ffffff;     /* conversation card */
+  --surface: #ececec;     /* bot bubble */
+  --bubble-user: #e3ded7; /* warm cream visitor bubble */
+  --accent: #CBA58F;      /* stone-rose */
+  --accent-dk: #9C7E6E;   /* darker stone (hover/links) */
+  --text: #2c2c2c;        /* dark charcoal */
+  --text-muted: #767676;  /* muted grey */
+  --error: #8a2f2f;       /* matches widget error text */
+  --border: #c9c9c9;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: 'Barlow', system-ui, -apple-system, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* --- Header: black logo block with stone-rose underline --- */
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.1rem 1.5rem;
+  background: var(--header-bg);
+  border-bottom: 3px solid var(--accent);
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.brand { display: flex; align-items: center; gap: 0.75rem; }
+.brand .logo { height: 40px; width: auto; }
+.brand h1 { margin: 0; font-size: 1.35rem; font-weight: 700; letter-spacing: 0.01em; color: var(--on-header); }
+header .subtitle { color: var(--accent); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.06em; }
+
+main {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.controls { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 1rem; }
+.date-range { display: flex; gap: 1rem; flex-wrap: wrap; }
+.date-field { display: flex; flex-direction: column; gap: 0.35rem; }
+label { font-size: 0.8rem; color: var(--text-muted); }
+
+input[type="date"] {
+  background: #fff;
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 0.55rem 0.7rem;
+  border-radius: 6px;
+  font-family: inherit;
+  font-size: 0.95rem;
+  color-scheme: light;
+}
+input[type="date"]:focus { outline: none; border-color: var(--accent); }
+
+.button-row { display: flex; gap: 0.6rem; flex-wrap: wrap; }
+button {
+  background: var(--accent);
+  color: var(--text);
+  border: none;
+  padding: 0.6rem 1.2rem;
+  border-radius: 999px;
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+button:hover { background: var(--accent-dk); color: #fff; }
+button.secondary { background: transparent; color: var(--accent-dk); border: 1px solid var(--border); }
+button.secondary:hover { background: transparent; border-color: var(--accent); color: var(--text); }
+
+.status { padding: 0.6rem 0.8rem; border-radius: 6px; font-size: 0.9rem; display: none; }
+.status:not(:empty) { display: block; }
+.status-info { background: rgba(203,165,143,0.15); color: var(--accent-dk); border-left: 3px solid var(--accent); }
+.status-error { background: rgba(138,47,47,0.08); color: var(--error); border-left: 3px solid var(--error); }
+
+.muted { color: var(--text-muted); font-style: italic; font-size: 0.9rem; }
+
+.conv-list { display: flex; flex-direction: column; gap: 0.6rem; }
+.conv {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border);
+  border-radius: 6px;
+  transition: border-left-color 120ms ease;
+}
+.conv.expanded { border-left-color: var(--accent); }
+.conv-header { display: flex; align-items: center; gap: 0.75rem; padding: 0.7rem 1rem; cursor: pointer; flex-wrap: wrap; }
+.conv-toggle { color: var(--accent-dk); font-size: 0.8rem; width: 1rem; }
+.conv-when { color: var(--text-muted); font-size: 0.75rem; }
+.conv-count { color: var(--accent-dk); font-size: 0.75rem; font-weight: 600; }
+.conv-preview { color: var(--text); opacity: 0.75; font-size: 0.85rem; flex: 1 1 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.conv-body { padding: 0.2rem 1rem 0.9rem; display: flex; flex-direction: column; gap: 0.5rem; }
+.conv-body[hidden] { display: none; }
+
+/* Chat-style bubbles matched to the widget: visitor right (warm cream), bot
+   left (light grey), rounded with a small tail. */
+.msg { max-width: 85%; padding: 0.6rem 0.85rem; border-radius: 14px; font-size: 0.92rem; line-height: 1.55; }
+.msg-user { align-self: flex-end; background: var(--bubble-user); border: 1px solid var(--border); border-bottom-right-radius: 4px; }
+.msg-assistant { align-self: flex-start; background: var(--surface); border: 1px solid var(--border); border-bottom-left-radius: 4px; }
+.msg-role { display: block; font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 0.2rem; }
+.msg-content { white-space: pre-wrap; word-break: break-word; }
+.msg-time { margin-left: 0.4rem; color: var(--text-muted); font-size: 0.6rem; }
+
+@media (max-width: 600px) {
+  main { padding: 1rem; }
+  header { padding: 1rem; }
+  .button-row button { flex: 1; }
+  .msg { max-width: 92%; }
+}

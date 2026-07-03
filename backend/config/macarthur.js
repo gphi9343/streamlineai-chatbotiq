@@ -60,6 +60,15 @@ export const macarthurConfig = {
   // by Gareth (env is out of scope for this build).
   admin_token_env_var: 'ADMIN_TOKEN_MACARTHUR',
 
+  // Client auth (V1.6+): env var name for the NARROWER client-facing token,
+  // used only by the client Conversations viewer via GET /admin/conversations/
+  // :slug (the allowClientToken route flag). Distinct value from the admin
+  // token, set in Railway. Per-deployment opt-in: a deployment gets a client
+  // viewer only when this field is present AND the env var is set — future
+  // re-skins add their own CLIENT_TOKEN_<SLUG>. A leaked client link can never
+  // reach KB/debug routes (those routes don't pass allowClientToken).
+  client_token_env_var: 'CLIENT_TOKEN_MACARTHUR',
+
   // Chat dispatch: which Origin header values map to this deployment.
   //
   // Real serving origin — provisioned on Netlify (manual drag-deploy, renamed).

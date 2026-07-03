@@ -590,6 +590,127 @@ function escapeHtml(s) {
 }
 
 // ----------------------------------------------------------------
+// Conversations digest (V1.6) — pull-mode thread list for the active
+// deployment. Reuses the saved backend URL + active slug + token.
+// ----------------------------------------------------------------
+function toDateInputValue(d) {
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function setConvPreset(days) {
+  const end = new Date();
+  const start = new Date();
+  start.setDate(start.getDate() - (days - 1)); // inclusive of today
+  document.getElementById('conv-start').value = toDateInputValue(start);
+  document.getElementById('conv-end').value = toDateInputValue(end);
+}
+
+async function loadConversations() {
+  clearStatus('conversations-status');
+  const url = getBackendUrl();
+  const slug = getActiveSlug();
+  const token = getActiveToken();
+  const listEl = document.getElementById('conversations-list');
+
+  if (!url || !slug || !token) {
+    showStatus('conversations-status', 'Save credentials and test connection first.', 'error');
+    return;
+  }
+
+  const start = document.getElementById('conv-start').value;
+  const end = document.getElementById('conv-end').value;
+  if (!start || !end) {
+    showStatus('conversations-status', 'Pick a start and end date.', 'error');
+    return;
+  }
+  if (start > end) {
+    showStatus('conversations-status', 'Start date must be on or before end date.', 'error');
+    return;
+  }
+
+  listEl.innerHTML = '<p class="muted">Loading…</p>';
+  try {
+    const res = await fetch(
+      `${url}/admin/conversations/${encodeURIComponent(slug)}` +
+        `?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    const data = await res.json();
+    if (!res.ok) {
+      listEl.innerHTML = '';
+      showStatus('conversations-status', `Failed (${res.status}): ${data.message || 'unknown'}`, 'error');
+      return;
+    }
+    renderConversations(data.conversations || [], data);
+  } catch (err) {
+    listEl.innerHTML = '';
+    showStatus('conversations-status', `Network error: ${err.message}`, 'error');
+  }
+}
+
+function renderConversations(conversations, meta) {
+  const listEl = document.getElementById('conversations-list');
+  if (conversations.length === 0) {
+    listEl.innerHTML = '<p class="muted">No conversations in this range for this deployment.</p>';
+    return;
+  }
+  const truncNote = meta && meta.truncated
+    ? ` (capped at ${conversations.length} — narrow the range for the rest)`
+    : '';
+  const header = `<p class="muted">${conversations.length} conversation${conversations.length === 1 ? '' : 's'}${truncNote}.</p>`;
+  const items = conversations.map((c, i) => renderConversation(c, i)).join('');
+  listEl.innerHTML = header + `<div class="conv-list">${items}</div>`;
+}
+
+function renderConversation(c, index) {
+  const when = c.created_at ? new Date(c.created_at).toLocaleString() : '';
+  const shortId = (c.session_id || '').slice(0, 8);
+  const firstUser = (c.messages || []).find(m => m.role === 'user');
+  const preview = firstUser ? firstUser.content : '(no user message)';
+
+  const msgs = (c.messages || []).map(m => {
+    const roleClass = m.role === 'assistant' ? 'msg-assistant' : 'msg-user';
+    const time = m.created_at ? new Date(m.created_at).toLocaleTimeString() : '';
+    return `
+      <div class="msg ${roleClass}">
+        <span class="msg-role">${escapeHtml(m.role)}<span class="msg-time">${escapeHtml(time)}</span></span>
+        <div class="msg-content">${escapeHtml(m.content || '')}</div>
+      </div>`;
+  }).join('');
+
+  return `
+    <div class="conv" data-conv-index="${index}">
+      <div class="conv-header">
+        <span class="conv-toggle">▸</span>
+        <span class="conv-when">${escapeHtml(when)} · ${escapeHtml(shortId)}</span>
+        <span class="conv-count">${c.message_count} msg</span>
+        <span class="conv-preview">${escapeHtml(preview)}</span>
+      </div>
+      <div class="conv-body" hidden>${msgs}</div>
+    </div>`;
+}
+
+function handleConversationsClick(ev) {
+  const headerEl = ev.target.closest('.conv-header');
+  if (!headerEl) return;
+  const conv = headerEl.closest('.conv');
+  const body = conv.querySelector('.conv-body');
+  const toggle = conv.querySelector('.conv-toggle');
+  if (body.hasAttribute('hidden')) {
+    body.removeAttribute('hidden');
+    conv.classList.add('expanded');
+    if (toggle) toggle.textContent = '▾';
+  } else {
+    body.setAttribute('hidden', '');
+    conv.classList.remove('expanded');
+    if (toggle) toggle.textContent = '▸';
+  }
+}
+
+// ----------------------------------------------------------------
 // Wire up
 // ----------------------------------------------------------------
 document.addEventListener('DOMContentLoaded', () => {
@@ -631,6 +752,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // V1.3.3 — delegated click handler for edit/delete/save/cancel
   document.getElementById('recent-list').addEventListener('click', handleRecentListClick);
+
+  // Conversations digest (V1.6)
+  setConvPreset(7); // prefill last 7 days (no auto-fetch)
+  document.getElementById('conv-load').addEventListener('click', loadConversations);
+  document.getElementById('conv-preset-7').addEventListener('click', () => { setConvPreset(7); loadConversations(); });
+  document.getElementById('conv-preset-30').addEventListener('click', () => { setConvPreset(30); loadConversations(); });
+  document.getElementById('conversations-list').addEventListener('click', handleConversationsClick);
 
   // If credentials already saved, auto-load recent
   if (getBackendUrl() && getActiveSlug() && getActiveToken()) {

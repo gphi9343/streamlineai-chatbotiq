@@ -226,8 +226,12 @@ function validateKbFields({ content_type, question, body, attribution, tags, sou
 adminRouter.get(
   '/deployments',
   requireAdminAuth({ requireDeployment: false }),
-  (_req, res) => {
-    res.json({ status: 'ok', deployments: listDeployments() });
+  (req, res) => {
+    // Scoped enumeration (V1.6): return only the deployment(s) this token
+    // authorizes. The auth middleware resolves them into req.authorizedSlugs.
+    const authorized = new Set(req.authorizedSlugs || []);
+    const deployments = listDeployments().filter(d => authorized.has(d.slug));
+    res.json({ status: 'ok', deployments });
   }
 );
 
@@ -251,7 +255,7 @@ adminRouter.get(
 // ----------------------------------------------------------------
 adminRouter.get(
   '/debug/system-prompt/:slug',
-  requireAdminAuth({ requireDeployment: false }),
+  requireAdminAuth({ slugFrom: 'param' }),
   (req, res) => {
     const { slug } = req.params;
     if (!slug || typeof slug !== 'string' || !slug.trim()) {
@@ -313,7 +317,7 @@ adminRouter.get(
 // ----------------------------------------------------------------
 adminRouter.get(
   '/debug/retrieval/:slug',
-  requireAdminAuth({ requireDeployment: false }),
+  requireAdminAuth({ slugFrom: 'param' }),
   async (req, res) => {
     const { slug } = req.params;
     const { query } = req.query;

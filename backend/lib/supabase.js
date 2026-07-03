@@ -38,20 +38,30 @@ const MAX_HISTORY_TURNS = 20;
  * updates last_active_at without overwriting created_at.
  *
  * @param {string} sessionId - UUID generated client-side
- * @param {string} deployment - CONFIG name, e.g. "upunt"
+ * @param {string} deployment - CONFIG.deployment_name (display name)
+ * @param {string} [deploymentSlug] - CONFIG.client_slug (V1.6). Persisted so
+ *   conversations can be queried by slug (Conversation Digest) rather than by
+ *   the brittle display-name string. Requires the sessions.deployment_slug
+ *   column (migrations/v1.6-sessions-deployment-slug.sql) to exist first.
  * @returns {Promise<{ok: true} | {ok: false, error: object}>}
  */
-export async function ensureSession(sessionId, deployment) {
+export async function ensureSession(sessionId, deployment, deploymentSlug) {
+  const row = {
+    id: sessionId,
+    deployment,
+    last_active_at: new Date().toISOString(),
+  };
+  // Only include the slug when supplied. Upsert updates only the columns
+  // present in the payload (created_at / metadata are left untouched), so a
+  // missing slug never nulls out an existing value — and existing sessions
+  // self-heal their slug on their next turn once this ships.
+  if (deploymentSlug) {
+    row.deployment_slug = deploymentSlug;
+  }
+
   const { error } = await supabase
     .from('sessions')
-    .upsert(
-      {
-        id: sessionId,
-        deployment,
-        last_active_at: new Date().toISOString(),
-      },
-      { onConflict: 'id', ignoreDuplicates: false }
-    );
+    .upsert(row, { onConflict: 'id', ignoreDuplicates: false });
 
   if (error) {
     return {

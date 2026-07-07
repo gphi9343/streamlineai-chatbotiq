@@ -1,0 +1,268 @@
+/* ============================================================
+   Kawana Flooring — chat frontend styles
+   Light theme — matched to Kawana's confirmed brand palette
+   (white ground, near-black text, warm-tan accent). Inter for UI/body,
+   a light serif for the header wordmark.
+   ============================================================ */
+:root {
+  /* Confirmed brand palette (Kawana live CSS): */
+  --brand-bg:          #FFFFFF;  /* white ground */
+  --brand-accent:      #BEA082;  /* warm tan */
+  --brand-text:        #121212;  /* near-black text */
+  /* Derived tokens (not in the confirmed set — sensible shades for a white
+     ground; adjust if Kawana provides exact values): */
+  --brand-accent-dk:   #8F7A52;  /* darker tan — hover/link states */
+  --brand-muted:       #6B6B6B;  /* muted grey on white */
+  --brand-surface:     #F2F2F2;  /* input/chip fill */
+  --brand-border:      #E0E0E0;  /* hairline border on white */
+  --brand-bubble-ai:   #F2F2F2;  /* assistant bubble */
+  --brand-bubble-user: #F4EEE6;  /* user bubble — faint warm tint */
+  --on-accent:         #121212;  /* dark text on the tan accent button */
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  height: 100%;
+  background: var(--brand-bg);
+  color: var(--brand-text);
+  font-family: 'Inter', sans-serif;
+  font-size: 15px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+.page {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+  max-width: 680px;
+  margin: 0 auto;
+  background: var(--brand-bg);
+}
+
+/* --- Header --- */
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 22px 20px 28px;
+  gap: 16px;
+}
+
+/* Text wordmark (replaces Macarthur's logo <img>). Two lines via block spans,
+   light-weight serif for a restrained brand mark against the Inter UI. */
+.brand .wordmark {
+  font-family: Georgia, 'Times New Roman', serif;
+  font-weight: 300;
+  font-size: 26px;
+  line-height: 1.05;
+  letter-spacing: 0.5px;
+  color: var(--brand-text);
+}
+.brand .wordmark span { display: block; }
+
+.brand .tagline {
+  font-size: 12px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--brand-muted);
+  margin-top: 6px;
+}
+
+.btn-secondary {
+  flex: none;
+  background: transparent;
+  color: var(--brand-accent-dk);
+  border: 1px solid var(--brand-border);
+  border-radius: 999px;
+  padding: 7px 14px;
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+.btn-secondary:hover {
+  border-color: var(--brand-accent);
+  color: var(--brand-text);
+}
+
+/* --- Pulse line (signature element) --- */
+.pulse-line {
+  width: 100%;
+  height: 2px;
+  background: linear-gradient(90deg, transparent 0%, var(--brand-accent-dk) 30%, var(--brand-accent) 70%, transparent 100%);
+  opacity: 0.6;
+}
+
+/* --- Main / messages --- */
+main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 16px 16px 20px;
+}
+
+#messages {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 8px 4px 16px;
+}
+
+.msg {
+  max-width: 85%;
+  padding: 11px 14px;
+  border-radius: 14px;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  font-size: 15px;
+}
+
+.msg-user {
+  align-self: flex-end;
+  background: var(--brand-bubble-user);
+  border: 1px solid var(--brand-border);
+  color: var(--brand-text);
+  border-bottom-right-radius: 4px;
+}
+
+.msg-assistant {
+  align-self: flex-start;
+  background: var(--brand-bubble-ai);
+  border: 1px solid var(--brand-border);
+  color: var(--brand-text);
+  border-bottom-left-radius: 4px;
+}
+
+.msg-status {
+  align-self: center;
+  background: transparent;
+  color: var(--brand-muted);
+  font-size: 13px;
+  padding: 4px 8px;
+}
+
+.msg-error {
+  border-color: #c97b7b;
+  color: #8a2f2f;
+}
+
+/* Clickable links inside bot messages (post-stream linkify) */
+.msg-assistant a {
+  color: var(--brand-accent-dk);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  word-break: break-all;
+}
+.msg-assistant a:hover { color: var(--brand-text); }
+
+/* Bullet lists rendered from "- " markdown in bot replies */
+.msg-assistant ul { margin: 4px 0; padding-left: 20px; }
+
+/* --- Welcome / empty state --- */
+.welcome {
+  align-self: stretch;
+  max-width: 100%;
+  padding: 24px 6px 8px 0;
+}
+.welcome-title {
+  font-family: 'Inter', sans-serif;
+  font-weight: 600;
+  font-size: 21px;
+  line-height: 1.2;
+  color: var(--brand-text);
+  margin-bottom: 10px;
+}
+.welcome-body,
+.welcome-cta {
+  font-size: 15px;
+  color: var(--brand-text);
+  margin-bottom: 12px;
+}
+.welcome-cta a {
+  color: var(--brand-accent-dk);
+  font-weight: 600;
+  text-decoration: none;
+  border-bottom: 1px solid var(--brand-accent-dk);
+}
+.welcome-cta a:hover { color: var(--brand-text); border-color: var(--brand-text); }
+.welcome-prompt {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--brand-muted);
+  margin: 18px 0 10px;
+}
+.chips {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+}
+.chip {
+  background: var(--brand-surface);
+  color: var(--brand-text);
+  border: 1px solid var(--brand-border);
+  border-radius: 999px;
+  padding: 9px 15px;
+  font-family: 'Inter', sans-serif;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.chip:hover {
+  border-color: var(--brand-accent);
+  background: var(--brand-bubble-user);
+}
+
+/* --- Input form --- */
+#chat-form {
+  display: flex;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--brand-border);
+}
+
+#input {
+  flex: 1;
+  background: var(--brand-surface);
+  border: 1px solid var(--brand-border);
+  border-radius: 999px;
+  padding: 12px 16px;
+  color: var(--brand-text);
+  font-family: 'Inter', sans-serif;
+  font-size: 15px;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+#input:focus { border-color: var(--brand-accent); }
+#input::placeholder { color: var(--brand-muted); }
+#input:disabled { opacity: 0.5; }
+
+#send {
+  flex: none;
+  background: var(--brand-accent);
+  color: var(--on-accent);
+  border: none;
+  border-radius: 999px;
+  padding: 12px 22px;
+  font-family: 'Inter', sans-serif;
+  font-weight: 600;
+  font-size: 15px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+#send:hover:not(:disabled) { background: var(--brand-accent-dk); }
+#send:disabled { opacity: 0.5; cursor: default; }
+
+/* --- Mobile --- */
+@media (max-width: 480px) {
+  .brand .wordmark { font-size: 22px; }
+  .msg { max-width: 90%; }
+}

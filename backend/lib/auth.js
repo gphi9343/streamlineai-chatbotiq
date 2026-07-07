@@ -32,6 +32,7 @@ import { makeError, sendError } from './errors.js';
 import { upuntConfig } from '../config/upunt.js';
 import { streamlineaiConfig } from '../config/streamlineai.js';
 import { macarthurConfig } from '../config/macarthur.js';
+import { demoKawanaConfig } from '../config/demo-kawana.js';
 
 // Deployment registry — keyed by client_slug.
 // Add new deployments here. Engine reads CONFIG.admin_token_env_var per
@@ -41,6 +42,7 @@ const DEPLOYMENT_REGISTRY = {
   upunt: upuntConfig,
   streamlineai: streamlineaiConfig,
   macarthur: macarthurConfig,
+  'demo-kawana': demoKawanaConfig,
 };
 
 /**

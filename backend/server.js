@@ -77,6 +77,7 @@ import {
 } from './lib/supabase.js';
 import { retrieveKb } from './lib/kb.js';
 import { buildSystemPrompt, renderKbContext } from './lib/system-prompt.js';
+import { applyEmailAsk } from './lib/email-ask.js';
 import { adminRouter } from './routes/admin.js';
 
 import {
@@ -357,6 +358,37 @@ app.post('/chat', async (req, res) => {
   const validation = validateStreamedResponse(result.text, result.stop_reason);
   if (!validation.ok) {
     console.warn('[validate] post-stream validation failed:', validation.message);
+  }
+
+  // --- Deterministic pricing-email-ask append (Macarthur only).
+  // 2b3d30aa (REFERENCE, tags ["pricing","quote"]) reaches the model intact
+  // every turn but is paraphrased by design, so whether the email-ask clause
+  // survives paraphrase is sampling variance (5/8 live runs dropped it), not
+  // a KB/CONFIG defect. This appends a fixed, hardcoded sentence after
+  // streaming has completed, deterministically, independent of what the
+  // model produced. Must run BEFORE the diag log and saveAssistantMessage
+  // below so the appended text is both logged and persisted (so a later
+  // turn's "already asked this session" check can find it in history), and
+  // BEFORE res.end() so the extra 'token' event still reaches the client
+  // over the same open stream. See lib/email-ask.js for eligibility/dedup
+  // detail.
+  //
+  // Gated to macarthur specifically: the appended sentence's phrasing (and
+  // the underlying "email capture is fine here" premise) is Macarthur CONFIG
+  // content, not universal — StreamlineAI's hard guardrails / INSUFFICIENT
+  // DATA TEMPLATE forbid mid-conversation contact-capture offers outright,
+  // so applying this by tag alone with no deployment gate would violate that
+  // rule the moment any other deployment's KB picked up a pricing/quote tag.
+  if (CONFIG.client_slug === 'macarthur') {
+    const emailAsk = applyEmailAsk({
+      hits,
+      history,
+      responseText: result.text,
+    });
+    if (emailAsk.appended) {
+      send('token', { text: emailAsk.suffix });
+      result.text = emailAsk.text;
+    }
   }
 
   // --- Retrieval observability (Session 36) — structured per-turn diagnostic.

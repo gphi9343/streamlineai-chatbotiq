@@ -14,8 +14,23 @@
 //
 // Scope: code only. Does not touch 2b3d30aa, example_messages, or
 // hard_guardrails wording — this sits alongside them as a safety net, not a
-// replacement. The model's own organic inclusion (3/8 runs) is left as-is;
-// the dedup guard below only prevents a double-ask within the SAME turn.
+// replacement.
+//
+// No same-turn organic-ask guard (removed — PR-13 smoke test): an earlier
+// version skipped the append when the model's own response text already
+// contained the word "email", to avoid a doubled-up ask reading like
+// double-dipping. That guard was defeated by the exact failure mode this
+// module exists to eliminate: 2b3d30aa's enriched body itself contains the
+// word "email", and on a live turn the model's paraphrase produced a
+// degraded, incomplete version of the ask (missing "you're welcome to" and
+// "with you") that still contained the bare word — the guard matched it,
+// concluded an ask was already present, and suppressed the deterministic
+// append on the exact turn it was meant to guarantee. A false "already
+// asked" from unreliable model output is a functional failure; an
+// occasional cosmetic doubled-up ask (model says something ask-like, we
+// append the same fixed sentence right after) is not. Always append when
+// isEligibleForEmailAsk is true and emailAskAlreadySentThisSession is false,
+// full stop.
 //
 // Tag-based eligibility (not ID-based): matches any hit tagged "pricing" or
 // "quote", so the deferred crowding-candidate backlog rows (pricing-adjacent
@@ -38,13 +53,6 @@ export const EMAIL_ASK_SENTENCE =
   "If you'd rather not fill in the whole form right now, you're welcome to " +
   'just leave your email here instead and the team can follow up directly ' +
   'with you.';
-
-// Same-turn dedup guard (item 4): a loose organic-ask detector. Only needs
-// to catch the model's own spontaneous ask well enough to avoid an obviously
-// doubled-up close (the exact thing PR #11 guarded against at the prompt
-// level) — false positives here just skip a redundant-but-harmless append,
-// so this stays deliberately broad rather than tight.
-const ORGANIC_ASK_PATTERN = /\bemail\b/i;
 
 /**
  * Whether this turn's retrieved KB hits qualify for the pricing email ask.
@@ -79,17 +87,6 @@ export function emailAskAlreadySentThisSession(history) {
 }
 
 /**
- * Whether the model's own response text already reads as an email ask.
- * Same-turn dedup guard only — does not look at prior turns.
- *
- * @param {string} responseText
- * @returns {boolean}
- */
-export function responseAlreadyAsksForEmail(responseText) {
-  return typeof responseText === 'string' && ORGANIC_ASK_PATTERN.test(responseText);
-}
-
-/**
  * Decide whether to append the deterministic email ask to this turn's
  * response, and produce the pieces the caller needs: the suffix alone (to
  * stream as a final SSE token) and the full combined text (for validation,
@@ -105,9 +102,8 @@ export function responseAlreadyAsksForEmail(responseText) {
 export function applyEmailAsk({ hits, history, responseText }) {
   const eligible = isEligibleForEmailAsk(hits);
   const alreadySent = emailAskAlreadySentThisSession(history);
-  const organicAsk = responseAlreadyAsksForEmail(responseText);
 
-  if (!eligible || alreadySent || organicAsk) {
+  if (!eligible || alreadySent) {
     return { appended: false, suffix: '', text: responseText };
   }
 

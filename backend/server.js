@@ -387,8 +387,20 @@ app.post('/chat', async (req, res) => {
           rank: typeof h.rank === 'number' ? Number(h.rank.toFixed(4)) : null,
           content_type: h.content_type,
         })),
+        // Diagnostic-only addition (assembly-step investigation): the exact
+        // CONTEXT block text as assembled by renderKbContext() and handed to
+        // streamChat() — i.e. what actually left the process for the KB-entries
+        // section, not just entry ids/ranks. Lets a failing turn's "what was
+        // sent" be diffed byte-for-byte against "what came back" instead of
+        // inferred from a truncated preview. No behavioural change: this is
+        // the same string already built at line ~340, just also logged.
+        kb_context_block: contextBlock,
         stop_reason: result.stop_reason,
         response_preview: (result.text || '').slice(0, 240),
+        // Diagnostic-only addition: full response text (paired with
+        // kb_context_block above) so the KB-entries section sent and the
+        // response text received can be diffed directly on a test turn.
+        response_full: result.text,
       })
   );
 
